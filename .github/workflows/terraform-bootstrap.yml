@@ -1,0 +1,100 @@
+# =============================================================================
+# Terraform Bootstrap Workflow
+# =============================================================================
+# This workflow bootstraps the Terraform state backend (S3 + DynamoDB).
+# Run this ONCE before running any other Terraform workflows.
+#
+# TODO: Before running this workflow:
+# 1. Create an AWS account
+# 2. Create an IAM user with AdministratorAccess
+# 3. Add the following secrets to GitHub:
+#    - AWS_ACCESS_KEY_ID
+#    - AWS_SECRET_ACCESS_KEY
+# =============================================================================
+
+name: Terraform Bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "bootstrap" to confirm'
+        required: true
+        type: string
+
+env:
+  TF_VERSION: '1.5.7'
+  AWS_REGION: 'us-east-1' # TODO: Update if using a different region
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Bootstrap State Backend
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'bootstrap'
+    
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS Access
+        run: |
+          echo "Verifying AWS credentials..."
+          aws sts get-caller-identity
+          echo "AWS credentials verified successfully!"
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform/shared/backend-setup
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        working-directory: terraform/shared/backend-setup
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        working-directory: terraform/shared/backend-setup
+
+      - name: Display Outputs
+        id: outputs
+        run: |
+          echo "## Bootstrap Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following resources were created:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### S3 Bucket" >> $GITHUB_STEP_SUMMARY
+          echo "\`$(terraform output -raw s3_bucket_name)\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### DynamoDB Table" >> $GITHUB_STEP_SUMMARY
+          echo "\`$(terraform output -raw dynamodb_table_name)\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "You can now run the main Terraform workflow to deploy infrastructure." >> $GITHUB_STEP_SUMMARY
+        working-directory: terraform/shared/backend-setup
+
+  invalid-confirmation:
+    name: Invalid Confirmation
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm != 'bootstrap'
+    steps:
+      - name: Error
+        run: |
+          echo "❌ Invalid confirmation. You must type 'bootstrap' to run this workflow."
+          exit 1
