@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import supportRoutes from './support.js';
 
 // =============================================================================
 // V1 API Routes
@@ -14,6 +15,9 @@ const router = Router();
 // import payoutsRoutes from './payouts.js';
 // import adminRoutes from './admin.js';
 
+// Mounted routes
+router.use('/support', supportRoutes);
+
 // router.use('/auth', authRoutes);
 // router.use('/users', usersRoutes);
 // router.use('/accounts', accountsRoutes);
@@ -27,6 +31,9 @@ router.get('/', (_req, res) => {
     version: 'v1',
     message: 'Dynasty Futures API',
     documentation: '/v1/docs',
+    endpoints: {
+      support: '/v1/support/tickets',
+    },
   });
 });
 

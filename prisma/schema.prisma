@@ -693,8 +693,12 @@ model AuditLog {
 
 model SupportTicket {
   id          String         @id @default(uuid())
-  creatorId   String         @map("creator_id")
+  creatorId   String?        @map("creator_id") // Optional for anonymous submissions
   assigneeId  String?        @map("assignee_id")
+  
+  // Contact info for anonymous submissions
+  email       String?        // Required if creatorId is null
+  name        String?        // Required if creatorId is null
   
   subject     String
   description String
@@ -712,7 +716,7 @@ model SupportTicket {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  creator  User  @relation("TicketCreator", fields: [creatorId], references: [id])
+  creator  User?  @relation("TicketCreator", fields: [creatorId], references: [id])
   assignee User? @relation("TicketAssignee", fields: [assigneeId], references: [id])
 
   @@index([creatorId])
@@ -720,6 +724,7 @@ model SupportTicket {
   @@index([status])
   @@index([priority])
   @@index([createdAt])
+  @@index([email])
   @@map("support_tickets")
 }
 
