@@ -32,21 +32,32 @@ Dynasty Futures is a **proprietary futures trading firm** that offers traders fu
 ```
 DF-Backend/
 ├── .github/workflows/     # CI/CD pipelines
-├── prisma/                # Database schema and migrations (TODO)
-├── src/                   # Application source code (TODO)
-│   ├── api/               # REST API routes
-│   ├── services/          # Business logic
-│   ├── repositories/      # Data access layer
-│   ├── jobs/              # Background workers
-│   ├── rules-engine/      # Trading rules validation
-│   └── utils/             # Shared utilities
+├── prisma/                # Database schema and migrations
+│   └── schema.prisma      # Prisma schema with all models
+├── src/                   # Application source code
+│   ├── api/               # REST API layer
+│   │   ├── middleware/    # Express middleware
+│   │   └── routes/        # Route handlers
+│   ├── config/            # Configuration management
+│   ├── services/          # Business logic (TODO)
+│   ├── repositories/      # Data access layer (TODO)
+│   ├── jobs/              # Background workers (TODO)
+│   ├── rules-engine/      # Trading rules validation (TODO)
+│   ├── utils/             # Shared utilities (logger, errors, db)
+│   └── test/              # Test setup
 ├── terraform/             # Infrastructure as Code
 │   ├── environments/      # Environment-specific configs
 │   │   └── prod/          # Production environment
 │   ├── modules/           # Reusable Terraform modules
+│   │   └── iam/           # IAM users, groups, policies
 │   └── shared/            # Shared resources (state backend)
-├── docker/                # Container configurations (TODO)
-└── scripts/               # Utility scripts (TODO)
+├── docker/                # Container configurations
+│   ├── Dockerfile         # Production multi-stage build
+│   └── Dockerfile.dev     # Development with hot reload
+├── scripts/               # Utility scripts
+│   └── init-db.sql        # Database initialization
+└── docs/                  # Documentation
+    └── AWS-GETTING-STARTED.md
 ```
 
 ## Key Files
@@ -63,12 +74,18 @@ DF-Backend/
 
 Check `dynasty-futures-backend-plan.md` for current progress. The project is being built incrementally:
 
-1. **Phase 1**: Infrastructure (Terraform, VPC, Aurora, Redis)
-2. **Phase 2**: Authentication system
+1. **Phase 1**: Infrastructure (Terraform, VPC, IAM) ✅
+2. **Phase 2**: Application scaffold + Authentication system (in progress)
 3. **Phase 3**: Challenges & Accounts
 4. **Phase 4**: Rules Engine
 5. **Phase 5**: Payouts & Admin
 6. **Phase 6**: Polish & Launch
+
+### Current State
+- AWS account configured with IAM users/groups
+- GitHub Actions CI/CD for Terraform
+- Application scaffold complete (TypeScript, Prisma, Express, Docker)
+- Local development environment ready (docker-compose)
 
 ## Coding Standards
 

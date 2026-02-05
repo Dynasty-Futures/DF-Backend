@@ -5,6 +5,7 @@ I'm designing a backend system for **Dynasty Futures**, a proprietary futures tr
 ## Business Model Overview
 
 Dynasty Futures is a prop trading firm that offers traders funded accounts to trade futures markets. We provide:
+
 - **Evaluation/Challenge Programs**: Traders purchase challenges and must meet profit targets while adhering to risk rules
 - **Funded Accounts**: Successful traders receive funded accounts and earn profit splits (typically 70-90%)
 - **Account Types**: Multiple tiers (e.g., $5K, $10K, $25K, $50K, $100K, $200K accounts)
@@ -23,6 +24,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 ## Core System Requirements
 
 ### 1. User Management & Authentication
+
 - User registration, login (email/password, OAuth)
 - KYC/Identity verification workflow
 - Role-based access (Trader, Admin, Support)
@@ -30,6 +32,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Account suspension/termination handling
 
 ### 2. Account & Challenge Management
+
 - Challenge purchase flow (Stripe integration)
 - Multiple account types with different rules:
   - Profit targets (e.g., 8% Phase 1, 5% Phase 2)
@@ -43,6 +46,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Account scaling logic
 
 ### 3. Trading Rules Engine
+
 - Real-time rule validation from YourPropFirm data
 - Daily loss limit monitoring
 - Maximum drawdown calculations (trailing vs static)
@@ -53,6 +57,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Automated account suspension on rule breach
 
 ### 4. Payout System
+
 - Payout request submissions
 - Payout approval workflow (admin review)
 - Payout scheduling (bi-weekly, 5-day, on-demand based on account type)
@@ -61,6 +66,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Tax documentation (1099 generation for US traders)
 
 ### 5. Data & Analytics
+
 - Integration with YourPropFirm API for:
   - Real-time trade data
   - P&L calculations
@@ -71,6 +77,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Trade history storage
 
 ### 6. Admin Portal
+
 - User management (view/edit/suspend accounts)
 - Challenge and funded account oversight
 - Payout approval/rejection
@@ -81,6 +88,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 ## Non-Functional Requirements
 
 ### Security
+
 - SOC 2 compliance considerations
 - PCI DSS compliance (Stripe handles most, but need secure handling)
 - Encryption at rest and in transit
@@ -90,12 +98,14 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Secrets management (API keys, database credentials)
 
 ### Scalability
+
 - Support for 10,000+ concurrent users
 - Handle 100,000+ challenge accounts
 - Process real-time trade data feeds
 - Scale during high-traffic periods (promotional launches)
 
 ### Performance
+
 - < 200ms API response times for dashboard
 - Real-time rule monitoring (< 5 second latency)
 - Fast payout processing
@@ -103,6 +113,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Aurora's high-performance capabilities for complex queries and high throughput
 
 ### Reliability
+
 - 99.9% uptime SLA
 - Automated backups (Aurora automated backups)
 - Disaster recovery plan
@@ -111,6 +122,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 ## What I Need Help Planning
 
 ### 1. Database Schema Design (Aurora PostgreSQL)
+
 - Tables for users, accounts, challenges, payouts, trades, audit logs
 - Relationships and foreign keys
 - Indexing strategy optimized for Aurora
@@ -119,6 +131,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Prisma schema design and migration strategy
 
 ### 2. AWS Architecture
+
 - **Compute**: ECS/Fargate vs Lambda vs EC2 (recommendation needed)
 - **Database**: Aurora PostgreSQL cluster configuration
   - Writer and reader instances
@@ -131,6 +144,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - **Load Balancing**: ALB/NLB configuration
 
 ### 3. Terraform Infrastructure
+
 - **Production Environment Only** (for now)
 - Terraform module structure and organization
 - State management (S3 backend with DynamoDB locking)
@@ -140,6 +154,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - How to structure for easy addition of staging/dev later
 
 ### 4. API Design
+
 - REST vs GraphQL (recommendation needed)
 - API Gateway setup with Terraform
 - Rate limiting strategy
@@ -148,6 +163,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - API versioning strategy
 
 ### 5. Security Architecture
+
 - IAM roles and policies (principle of least privilege)
 - AWS Secrets Manager for API keys, database credentials
 - KMS for encryption keys
@@ -157,6 +173,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - DDoS protection (AWS Shield)
 
 ### 6. Deployment & CI/CD
+
 - **Infrastructure as Code**: Terraform-based deployment
 - CI/CD pipeline (GitHub Actions recommended)
 - Database migration strategy with Prisma
@@ -166,6 +183,7 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 - Zero-downtime deployment approach
 
 ### 7. Monitoring & Observability
+
 - CloudWatch for logs, metrics, and alarms
 - Aurora Performance Insights
 - Error tracking (Sentry or similar)
@@ -212,3 +230,4 @@ Dynasty Futures is a prop trading firm that offers traders funded accounts to tr
 6. **Security best practices** specific to financial/trading applications
 7. **Monitoring and alerting setup**
 8. **Estimated AWS cost breakdown** for initial production environment
+

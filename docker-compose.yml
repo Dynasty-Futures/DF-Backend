@@ -1,0 +1,117 @@
+# =============================================================================
+# Dynasty Futures - Local Development Docker Compose
+# =============================================================================
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f api    # View API logs
+#   docker-compose exec db psql -U postgres dynasty_futures  # Connect to DB
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: dynasty-futures-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dynasty_futures
+    ports:
+      - '5433:5432'  # Use 5433 on host to avoid conflict with local PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d dynasty_futures']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: dynasty-futures-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # API Service (Development)
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: dynasty-futures-api
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dynasty_futures
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: local-dev-jwt-secret-that-is-at-least-32-characters
+      LOG_LEVEL: debug
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================================================
+  # Prisma Studio (Database GUI)
+  # ===========================================================================
+  prisma-studio:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    container_name: dynasty-futures-studio
+    command: npx prisma studio
+    ports:
+      - '5555:5555'
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dynasty_futures
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - tools
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:
+  redis_data:
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  default:
+    name: dynasty-futures-network
