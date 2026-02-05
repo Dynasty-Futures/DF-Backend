@@ -152,7 +152,7 @@ output "backend_config" {
     terraform {
       backend "s3" {
         bucket         = "${aws_s3_bucket.terraform_state.id}"
-        key            = "ENV_NAME/terraform.tfstate"  # Replace ENV_NAME with: prod, staging, etc.
+        key            = "production/terraform.tfstate"
         region         = "${var.aws_region}"
         dynamodb_table = "${aws_dynamodb_table.terraform_locks.name}"
         encrypt        = true

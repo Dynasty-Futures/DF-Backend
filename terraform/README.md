@@ -2,6 +2,8 @@
 
 This directory contains all Terraform configurations for the Dynasty Futures backend infrastructure.
 
+> **First time?** See the complete **[AWS Getting Started Guide](../docs/AWS-GETTING-STARTED.md)** for step-by-step instructions.
+
 ## Directory Structure
 
 ```
@@ -14,6 +16,7 @@ terraform/
 │       ├── terraform.tfvars  # Variable values
 │       └── backend.tf        # Remote state configuration
 ├── modules/
+│   ├── iam/                  # IAM users, groups, policies
 │   ├── networking/           # VPC, subnets, security groups
 │   ├── aurora/               # Aurora PostgreSQL (TODO)
 │   ├── redis/                # ElastiCache Redis (TODO)
@@ -36,18 +39,20 @@ terraform/
 - [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
 - An AWS account with appropriate permissions
 
-### TODO: Initial Setup Checklist
+### Initial Setup Checklist
+
+> **Detailed Guide**: See [AWS Getting Started Guide](../docs/AWS-GETTING-STARTED.md) for comprehensive instructions.
 
 Complete these steps in order:
 
-- [ ] **Step 1**: Create AWS Account
+- [ ] **Step 1**: Secure AWS Account
   - Sign up at https://aws.amazon.com/
   - Enable MFA on root account
   - Set up billing alerts
 
-- [ ] **Step 2**: Create IAM User
-  - Create user named `terraform-admin`
-  - Attach `AdministratorAccess` policy (can scope down later)
+- [ ] **Step 2**: Create Bootstrap IAM User (Manual)
+  - Create user named `terraform-bootstrap` in IAM console
+  - Attach `AdministratorAccess` policy
   - Create and save access keys
 
 - [ ] **Step 3**: Configure AWS CLI
@@ -56,47 +61,56 @@ Complete these steps in order:
   # Enter Access Key ID, Secret Access Key, region (us-east-1), output format (json)
   ```
 
-- [ ] **Step 4**: Add GitHub Secrets
-  Go to: Repository → Settings → Secrets and variables → Actions
-  
-  | Secret Name | Value |
-  |-------------|-------|
-  | `AWS_ACCESS_KEY_ID` | Your IAM access key ID |
-  | `AWS_SECRET_ACCESS_KEY` | Your IAM secret access key |
-
-- [ ] **Step 5**: Create GitHub Environments
-  Go to: Repository → Settings → Environments
-  
-  Create `production` environment with:
-  - Required reviewers (yourself or team members)
-  - Deployment branch: `main` only
-
-- [ ] **Step 6**: Bootstrap Terraform State
-  Option A - Via GitHub Actions:
-  1. Go to Actions → Terraform Bootstrap
-  2. Click "Run workflow"
-  3. Type "bootstrap" and run
-
-  Option B - Locally:
+- [ ] **Step 4**: Bootstrap Terraform State
   ```bash
   cd terraform/shared/backend-setup
   terraform init
   terraform apply
   ```
 
-- [ ] **Step 7**: Deploy Infrastructure
-  Option A - Via GitHub Actions:
-  1. Go to Actions → Terraform
-  2. Click "Run workflow"
-  3. Select action: "plan" first, then "apply"
+- [ ] **Step 5**: Configure Team Members
+  Edit `terraform/environments/prod/terraform.tfvars` and add your team to `iam_users`
 
-  Option B - Locally:
+- [ ] **Step 6**: Deploy Infrastructure + IAM
   ```bash
   cd terraform/environments/prod
   terraform init
   terraform plan
   terraform apply
   ```
+
+- [ ] **Step 7**: Get Credentials
+  ```bash
+  # Console sign-in URL for team members
+  terraform output console_signin_url
+  
+  # Initial passwords for users
+  terraform output -json user_initial_passwords
+  
+  # Terraform service account for GitHub Actions
+  terraform output terraform_access_key_id
+  terraform output terraform_secret_access_key
+  ```
+
+- [ ] **Step 8**: Add GitHub Secrets
+  Go to: Repository → Settings → Secrets and variables → Actions
+  
+  | Secret Name | Value |
+  |-------------|-------|
+  | `AWS_ACCESS_KEY_ID` | Output from `terraform output terraform_access_key_id` |
+  | `AWS_SECRET_ACCESS_KEY` | Output from `terraform output terraform_secret_access_key` |
+
+- [ ] **Step 9**: Create GitHub Environment
+  Go to: Repository → Settings → Environments
+  
+  Create `production` environment with:
+  - Required reviewers (yourself or team members)
+  - Deployment branch: `main` only
+
+- [ ] **Step 10**: Onboard Team Members
+  - Send console URL and initial passwords
+  - Users must change password on first login
+  - Users should enable MFA immediately
 
 ## GitHub Actions Workflows
 

@@ -240,9 +240,22 @@ terraform/
 Before running Terraform, complete these manual steps:
 
 1. **Create AWS Account** - Set up AWS account and enable billing alerts
-2. **Create IAM User** - Create an IAM user for Terraform with appropriate permissions
-3. **Configure GitHub Secrets** - Add AWS credentials to GitHub repository secrets
-4. **Bootstrap Terraform State** - Run the backend-setup to create S3 bucket and DynamoDB table
-5. **Register Domain** - (Optional) Register domain in Route53 for API
+2. **Create Bootstrap IAM User** - Create a temporary IAM user for initial Terraform run
+3. **Bootstrap Terraform State** - Run the backend-setup to create S3 bucket and DynamoDB table
+4. **Deploy IAM + Networking** - This creates managed IAM users and Terraform service account
+5. **Configure GitHub Secrets** - Use Terraform-managed service account credentials
+6. **Register Domain** - (Optional) Register domain in Route53 for API
 
-See `terraform/shared/backend-setup/README.md` for detailed bootstrap instructions.
+See `docs/AWS-GETTING-STARTED.md` for comprehensive step-by-step instructions.
+
+## IAM Structure
+
+The IAM module creates:
+
+| Group | Policy | Use Case |
+|-------|--------|----------|
+| `dynasty-futures-admin` | AdministratorAccess | Infrastructure management |
+| `dynasty-futures-developer` | PowerUserAccess | Application deployment |
+| `dynasty-futures-readonly` | ReadOnlyAccess | Viewing/monitoring |
+
+Plus a `dynasty-futures-terraform` service account for CI/CD automation.

@@ -51,6 +51,19 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # -----------------------------------------------------------------------------
+# IAM Module (Users, Groups, Policies)
+# -----------------------------------------------------------------------------
+
+module "iam" {
+  source = "../../modules/iam"
+
+  project_name          = var.project_name
+  environment           = var.environment
+  iam_users             = var.iam_users
+  create_terraform_user = var.create_terraform_user
+}
+
+# -----------------------------------------------------------------------------
 # Networking Module
 # -----------------------------------------------------------------------------
 

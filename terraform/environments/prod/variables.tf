@@ -149,3 +149,24 @@ variable "additional_tags" {
   type        = map(string)
   default     = {}
 }
+
+# -----------------------------------------------------------------------------
+# IAM
+# -----------------------------------------------------------------------------
+
+variable "iam_users" {
+  description = "List of IAM users to create"
+  type = list(object({
+    username       = string
+    email          = string
+    group          = string # admin, developer, or readonly
+    console_access = bool
+  }))
+  default = []
+}
+
+variable "create_terraform_user" {
+  description = "Whether to create a dedicated Terraform service account for CI/CD"
+  type        = bool
+  default     = true
+}

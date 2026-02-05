@@ -68,3 +68,43 @@ additional_tags = {
   CostCenter = "trading-platform"
   Team       = "backend"
 }
+
+# -----------------------------------------------------------------------------
+# IAM Users
+# -----------------------------------------------------------------------------
+# TODO: Add your team members here
+# Groups: admin (full access), developer (power user), readonly (view only)
+#
+# IMPORTANT: After applying, run:
+#   terraform output -json user_initial_passwords
+# to get initial passwords (users must change on first login)
+
+iam_users = [
+  {
+    username       = "BrockAdams"
+    email          = "brockadams@dynastyfuturesdyn.com"
+    group          = "admin"
+    console_access = true
+  },
+  {
+    username       = "ZacharyPerez"
+    email          = "zacharyperez@dynastyfuturesdyn.com"
+    group          = "admin"
+    console_access = true
+  },
+  {
+    username       = "JustinPerez"
+    email          = "justinprz12@gmail.com"
+    group          = "admin"
+    console_access = true
+  },
+  {
+    username       = "WilliamKelly"
+    email          = "treypkelly@gmail.com"
+    group          = "admin"
+    console_access = true
+  },
+]
+
+# Set to true to create a dedicated Terraform service account for GitHub Actions
+create_terraform_user = true
