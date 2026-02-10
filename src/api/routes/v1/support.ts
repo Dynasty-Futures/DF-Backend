@@ -121,7 +121,16 @@ router.post(
       //   ticketData.creatorId = userId;
       // }
 
-      const ticket = await supportTicketService.createTicket(ticketData);
+      const ticket = await supportTicketService.createTicket({
+        subject: ticketData.subject,
+        description: ticketData.description,
+        creatorId: ticketData.creatorId,
+        email: ticketData.email,
+        name: ticketData.name,
+        priority: ticketData.priority,
+        relatedEntity: ticketData.relatedEntity,
+        relatedEntityId: ticketData.relatedEntityId,
+      });
 
       logger.info(
         {
@@ -153,7 +162,7 @@ router.get(
   validateQuery(paginationSchema.merge(filtersSchema)),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { page, limit, sortBy, sortOrder, ...filters } = req.query as z.infer<
+      const { page, limit, sortBy, sortOrder, ...filters } = req.query as unknown as z.infer<
         typeof paginationSchema
       > &
         z.infer<typeof filtersSchema>;
@@ -206,7 +215,7 @@ router.get(
   validateQuery(paginationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const pagination = req.query as z.infer<typeof paginationSchema>;
+      const pagination = req.query as unknown as z.infer<typeof paginationSchema>;
 
       const result = await supportTicketService.getSupportQueue(pagination);
 
@@ -228,7 +237,7 @@ router.get(
   '/tickets/:id',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params['id'] as string;
 
       const ticket = await supportTicketService.getTicket(id);
 
@@ -252,7 +261,7 @@ router.patch(
   validateBody(updateTicketSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params['id'] as string;
       const updates = req.body as z.infer<typeof updateTicketSchema>;
 
       // TODO: Get user ID from auth middleware
@@ -291,7 +300,7 @@ router.post(
   validateBody(z.object({ assigneeId: z.string().uuid() })),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params['id'] as string;
       const { assigneeId } = req.body;
 
       // TODO: Get user ID from auth middleware
@@ -320,7 +329,7 @@ router.post(
   '/tickets/:id/resolve',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params['id'] as string;
 
       // TODO: Get user ID from auth middleware
       // const resolvedBy = req.user?.id;
@@ -348,7 +357,7 @@ router.post(
   '/tickets/:id/close',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { id } = req.params;
+      const id = req.params['id'] as string;
 
       // TODO: Get user ID from auth middleware
       // const closedBy = req.user?.id;
@@ -377,8 +386,8 @@ router.get(
   validateQuery(paginationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { userId } = req.params;
-      const pagination = req.query as z.infer<typeof paginationSchema>;
+      const userId = req.params['userId'] as string;
+      const pagination = req.query as unknown as z.infer<typeof paginationSchema>;
 
       const result = await supportTicketService.getUserTickets(userId, pagination);
 
@@ -402,8 +411,8 @@ router.get(
   validateQuery(paginationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { email } = req.params;
-      const pagination = req.query as z.infer<typeof paginationSchema>;
+      const email = req.params['email'] as string;
+      const pagination = req.query as unknown as z.infer<typeof paginationSchema>;
 
       // Validate email format
       const emailResult = z.string().email().safeParse(email);

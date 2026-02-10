@@ -1,0 +1,273 @@
+# =============================================================================
+# Application Deployment Workflow
+# =============================================================================
+# Builds the Docker image, pushes to ECR, runs database migrations,
+# and updates the ECS service.
+#
+# Triggers:
+# - Manual dispatch (workflow_dispatch)
+# - Push to main branch (only src/, prisma/, docker/, package* changes)
+#
+# Prerequisites:
+# - Terraform infrastructure must be deployed first
+# - GitHub Secrets configured:
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'prisma/**'
+      - 'docker/**'
+      - 'package*.json'
+      - 'tsconfig.json'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: 'Run database migrations'
+        required: true
+        default: true
+        type: boolean
+
+# -----------------------------------------------------------------------------
+# Environment Variables
+# -----------------------------------------------------------------------------
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: dynasty-futures-api
+  ECS_CLUSTER: dynasty-futures-prod
+  ECS_SERVICE: dynasty-futures-api-prod
+  TASK_DEFINITION_FAMILY: dynasty-futures-api-prod
+
+# -----------------------------------------------------------------------------
+# Permissions
+# -----------------------------------------------------------------------------
+
+permissions:
+  contents: read
+  id-token: write
+
+# Prevent concurrent deployments
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+# -----------------------------------------------------------------------------
+# Jobs
+# -----------------------------------------------------------------------------
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and Push Docker Image
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_uri: ${{ steps.build.outputs.image_uri }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Image
+        id: build
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build the production Docker image
+          docker build \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            -f docker/Dockerfile \
+            .
+
+          # Push both tags
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Output the full image URI
+          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+          echo "## Docker Image Built" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG\`" >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # Run Database Migrations
+  # ---------------------------------------------------------------------------
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_migrations == 'true' || github.event_name == 'push'
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get Network Configuration
+        id: network
+        run: |
+          # Get the ECS service's network configuration
+          NETWORK_CONFIG=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json)
+
+          SUBNETS=$(echo $NETWORK_CONFIG | jq -r '.subnets | join(",")')
+          SECURITY_GROUPS=$(echo $NETWORK_CONFIG | jq -r '.securityGroups | join(",")')
+
+          echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
+          echo "security_groups=$SECURITY_GROUPS" >> $GITHUB_OUTPUT
+
+      - name: Run Migration Task
+        id: migration
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+        run: |
+          # Get the current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition $TASK_DEFINITION_FAMILY \
+            --query 'taskDefinition' \
+            --output json)
+
+          TASK_DEF_ARN=$(echo $TASK_DEF | jq -r '.taskDefinitionArn')
+          EXECUTION_ROLE=$(echo $TASK_DEF | jq -r '.executionRoleArn')
+          TASK_ROLE=$(echo $TASK_DEF | jq -r '.taskRoleArn')
+
+          # Run a one-off ECS task for migration
+          TASK_ARN=$(aws ecs run-task \
+            --cluster $ECS_CLUSTER \
+            --task-definition $TASK_DEF_ARN \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.network.outputs.subnets }}],securityGroups=[${{ steps.network.outputs.security_groups }}],assignPublicIp=DISABLED}" \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "api",
+                "command": ["npx", "prisma", "migrate", "deploy"]
+              }]
+            }' \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
+          echo "Running migration task: $TASK_ARN"
+
+      - name: Wait for Migration to Complete
+        run: |
+          echo "Waiting for migration task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster $ECS_CLUSTER \
+            --tasks ${{ steps.migration.outputs.task_arn }}
+
+          # Check exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster $ECS_CLUSTER \
+            --tasks ${{ steps.migration.outputs.task_arn }} \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed with exit code: $EXIT_CODE"
+
+            # Fetch logs for debugging
+            echo "## Migration Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Exit code: $EXIT_CODE" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "## Migration Successful" >> $GITHUB_STEP_SUMMARY
+          echo "Migration completed successfully."
+
+  # ---------------------------------------------------------------------------
+  # Deploy to ECS
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    # Run even if migrate was skipped (but not if it failed)
+    if: always() && needs.build-and-push.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update ECS Task Definition
+        id: update-task-def
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
+        run: |
+          # Get current task definition
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition $TASK_DEFINITION_FAMILY \
+            --query 'taskDefinition')
+
+          # Update the image in the container definition
+          NEW_TASK_DEF=$(echo $TASK_DEF | jq \
+            --arg IMAGE "$IMAGE_URI" \
+            '.containerDefinitions[0].image = $IMAGE |
+             del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                 .compatibilities, .registeredAt, .registeredBy)')
+
+          # Register the new task definition
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "task_definition_arn=$NEW_TASK_DEF_ARN" >> $GITHUB_OUTPUT
+          echo "Registered new task definition: $NEW_TASK_DEF_ARN"
+
+      - name: Update ECS Service
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --task-definition ${{ steps.update-task-def.outputs.task_definition_arn }} \
+            --force-new-deployment
+
+          echo "Deployment initiated. Waiting for service to stabilize..."
+
+      - name: Wait for Deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE
+
+          echo "## Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${{ needs.build-and-push.outputs.image_uri }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: \`$ECS_CLUSTER\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: \`$ECS_SERVICE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Task Definition**: \`${{ steps.update-task-def.outputs.task_definition_arn }}\`" >> $GITHUB_STEP_SUMMARY

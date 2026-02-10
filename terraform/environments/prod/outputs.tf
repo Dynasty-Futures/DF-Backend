@@ -41,53 +41,58 @@ output "database_subnet_ids" {
 }
 
 # -----------------------------------------------------------------------------
-# Aurora (Uncomment when module is enabled)
+# Aurora
 # -----------------------------------------------------------------------------
 
-# output "aurora_cluster_endpoint" {
-#   description = "Aurora cluster writer endpoint"
-#   value       = module.aurora.cluster_endpoint
-#   sensitive   = true
-# }
+output "aurora_cluster_endpoint" {
+  description = "Aurora cluster writer endpoint"
+  value       = module.aurora.cluster_endpoint
+  sensitive   = true
+}
 
-# output "aurora_reader_endpoint" {
-#   description = "Aurora cluster reader endpoint"
-#   value       = module.aurora.reader_endpoint
-#   sensitive   = true
-# }
+output "aurora_reader_endpoint" {
+  description = "Aurora cluster reader endpoint"
+  value       = module.aurora.cluster_reader_endpoint
+  sensitive   = true
+}
 
-# -----------------------------------------------------------------------------
-# Redis (Uncomment when module is enabled)
-# -----------------------------------------------------------------------------
-
-# output "redis_endpoint" {
-#   description = "Redis primary endpoint"
-#   value       = module.redis.primary_endpoint
-#   sensitive   = true
-# }
+output "aurora_database_name" {
+  description = "Aurora database name"
+  value       = module.aurora.database_name
+}
 
 # -----------------------------------------------------------------------------
-# ALB (Uncomment when module is enabled)
+# ALB
 # -----------------------------------------------------------------------------
 
-# output "alb_dns_name" {
-#   description = "DNS name of the Application Load Balancer"
-#   value       = module.alb.dns_name
-# }
+output "alb_dns_name" {
+  description = "DNS name of the Application Load Balancer (use this to access the API)"
+  value       = module.alb.alb_dns_name
+}
 
 # -----------------------------------------------------------------------------
-# ECS (Uncomment when module is enabled)
+# ECS
 # -----------------------------------------------------------------------------
 
-# output "ecs_cluster_name" {
-#   description = "Name of the ECS cluster"
-#   value       = module.ecs.cluster_name
-# }
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster"
+  value       = module.ecs.cluster_name
+}
 
-# output "ecs_service_name" {
-#   description = "Name of the ECS API service"
-#   value       = module.ecs.api_service_name
-# }
+output "ecs_service_name" {
+  description = "Name of the ECS API service"
+  value       = module.ecs.service_name
+}
+
+output "ecr_repository_url" {
+  description = "URL of the ECR repository (for docker push)"
+  value       = module.ecs.ecr_repository_url
+}
+
+output "ecs_task_definition" {
+  description = "ECS task definition family"
+  value       = module.ecs.task_definition_family
+}
 
 # -----------------------------------------------------------------------------
 # IAM

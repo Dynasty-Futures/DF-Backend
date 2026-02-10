@@ -251,24 +251,52 @@ terraform apply           # Apply changes
 |----------|---------|---------|
 | `terraform-bootstrap.yml` | Manual | One-time setup of state backend |
 | `terraform.yml` | PR/Push/Manual | Infrastructure deployment |
+| `deploy.yml` | Push to main / Manual | Build image, run migrations, deploy to ECS |
 | `ci.yml` | PR | Lint, test, build (TODO) |
-| `deploy-prod.yml` | Push to main | Application deployment (TODO) |
+
+### First-Time Deployment
+
+After running `terraform apply` to create all infrastructure:
+
+```bash
+# 1. Get the ECR repository URL
+ECR_URL=$(terraform -chdir=terraform/environments/prod output -raw ecr_repository_url)
+
+# 2. Login to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
+
+# 3. Build and push the Docker image
+docker build -t $ECR_URL:latest -f docker/Dockerfile .
+docker push $ECR_URL:latest
+
+# 4. Force a new deployment (ECS will pull the new image)
+aws ecs update-service \
+  --cluster dynasty-futures-prod \
+  --service dynasty-futures-api-prod \
+  --force-new-deployment
+
+# 5. Watch deployment progress
+aws ecs wait services-stable --cluster dynasty-futures-prod --services dynasty-futures-api-prod
+
+# 6. Get the API URL
+echo "API URL: http://$(terraform -chdir=terraform/environments/prod output -raw alb_dns_name)"
+```
+
+### Subsequent Deployments
+
+Push to `main` triggers the deploy workflow automatically, or trigger manually via GitHub Actions.
 
 ### Manual Deployment
 
-1. Build the Docker image
-2. Push to ECR
-3. Update ECS service
-
 ```bash
 # Build and push
-docker build -t dynasty-api -f docker/Dockerfile.api .
-aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_REPO
-docker tag dynasty-api:latest $ECR_REPO:latest
-docker push $ECR_REPO:latest
+ECR_URL=$(terraform -chdir=terraform/environments/prod output -raw ecr_repository_url)
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URL
+docker build -t $ECR_URL:latest -f docker/Dockerfile .
+docker push $ECR_URL:latest
 
 # Update ECS service
-aws ecs update-service --cluster dynasty-futures-prod --service api --force-new-deployment
+aws ecs update-service --cluster dynasty-futures-prod --service dynasty-futures-api-prod --force-new-deployment
 ```
 
 ## Security
@@ -288,17 +316,20 @@ aws ecs update-service --cluster dynasty-futures-prod --service api --force-new-
 - **Errors**: Sentry
 - **Database**: Aurora Performance Insights
 
-## Cost Estimate
+## Cost Estimate (Current Setup)
 
 | Service | Monthly Cost |
 |---------|-------------|
-| ECS Fargate | $80-120 |
-| Aurora PostgreSQL | $350-450 |
-| ElastiCache Redis | $90-120 |
-| Load Balancer | $30-50 |
-| NAT Gateway | $70-100 |
-| Other (S3, Lambda, etc.) | $95-170 |
-| **Total** | **$715-1,010** |
+| Aurora Serverless v2 (0.5-4 ACU) | $43-100 |
+| ECS Fargate (2 tasks, 0.5 vCPU) | $30-50 |
+| Application Load Balancer | $20-30 |
+| NAT Gateway (2x) | $70-100 |
+| Secrets Manager | $2-5 |
+| CloudWatch Logs | $5-10 |
+| ECR | $1-5 |
+| **Total** | **$170-300** |
+
+*Redis (ElastiCache) and WAF not yet deployed. Add ~$90-120/mo for Redis when enabled.*
 
 ## Documentation
 
@@ -321,6 +352,6 @@ Proprietary - All rights reserved
 
 ---
 
-**Current Status**: Phase 1 - Infrastructure Setup
+**Current Status**: Phase 1 Complete - Infrastructure deployed (Aurora Serverless v2, ECS Fargate, ALB)
 
-See [dynasty-futures-backend-plan.md](dynasty-futures-backend-plan.md) for detailed progress.
+See [docs/dynasty-futures-backend-plan.md](docs/dynasty-futures-backend-plan.md) for detailed progress.

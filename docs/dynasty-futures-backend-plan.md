@@ -5,8 +5,11 @@
 - [x] **Phase 1.1**: Terraform foundation and GitHub Actions
 - [x] **Phase 1.2**: VPC and networking modules (deployed)
 - [x] **Phase 1.3**: IAM users and groups (deployed)
-- [ ] **Phase 1.4**: Aurora PostgreSQL setup (Terraform module TODO)
-- [ ] **Phase 1.5**: Redis cache setup (Terraform module TODO)
+- [x] **Phase 1.4**: Aurora PostgreSQL Serverless v2 (Terraform module created)
+- [ ] **Phase 1.5**: Redis cache setup (Terraform module TODO -- skipped for now)
+- [x] **Phase 1.6**: ALB + ECS Fargate + ECR (Terraform modules created)
+- [x] **Phase 1.7**: Secrets Manager (Terraform module created)
+- [x] **Phase 1.8**: CI/CD deploy workflow (GitHub Actions)
 - [x] **Phase 2.0**: Application scaffold (TypeScript, Prisma, Express, Docker)
 - [ ] **Phase 2.1**: Authentication system (JWT, OAuth, MFA)
 - [ ] **Phase 3**: Challenges & Accounts

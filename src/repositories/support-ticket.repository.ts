@@ -17,26 +17,26 @@ export interface CreateSupportTicketData {
 }
 
 export interface UpdateSupportTicketData {
-  assigneeId?: string | null;
-  status?: TicketStatus;
-  priority?: TicketPriority;
-  resolvedAt?: Date | null;
-  closedAt?: Date | null;
+  assigneeId?: string | null | undefined;
+  status?: TicketStatus | undefined;
+  priority?: TicketPriority | undefined;
+  resolvedAt?: Date | null | undefined;
+  closedAt?: Date | null | undefined;
 }
 
 export interface SupportTicketFilters {
-  status?: TicketStatus | TicketStatus[];
-  priority?: TicketPriority | TicketPriority[];
-  creatorId?: string;
-  assigneeId?: string | null;
-  email?: string;
+  status?: TicketStatus | TicketStatus[] | undefined;
+  priority?: TicketPriority | TicketPriority[] | undefined;
+  creatorId?: string | undefined;
+  assigneeId?: string | null | undefined;
+  email?: string | undefined;
 }
 
 export interface PaginationOptions {
   page: number;
   limit: number;
-  sortBy?: 'createdAt' | 'updatedAt' | 'priority' | 'status';
-  sortOrder?: 'asc' | 'desc';
+  sortBy?: 'createdAt' | 'updatedAt' | 'priority' | 'status' | undefined;
+  sortOrder?: 'asc' | 'desc' | undefined;
 }
 
 export interface PaginatedResult<T> {
@@ -208,7 +208,13 @@ export const updateSupportTicket = async (
   try {
     return await prisma.supportTicket.update({
       where: { id },
-      data,
+      data: {
+        ...(data.assigneeId !== undefined && { assigneeId: data.assigneeId }),
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.priority !== undefined && { priority: data.priority }),
+        ...(data.resolvedAt !== undefined && { resolvedAt: data.resolvedAt }),
+        ...(data.closedAt !== undefined && { closedAt: data.closedAt }),
+      },
       include: {
         creator: {
           select: {

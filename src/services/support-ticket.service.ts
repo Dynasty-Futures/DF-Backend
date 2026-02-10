@@ -22,23 +22,23 @@ import {
 
 export interface CreateTicketInput {
   // For authenticated users
-  creatorId?: string;
+  creatorId?: string | undefined;
   // For anonymous users
-  email?: string;
-  name?: string;
+  email?: string | undefined;
+  name?: string | undefined;
   // Required fields
   subject: string;
   description: string;
   // Optional fields
-  priority?: TicketPriority;
-  relatedEntity?: string;
-  relatedEntityId?: string;
+  priority?: TicketPriority | undefined;
+  relatedEntity?: string | undefined;
+  relatedEntityId?: string | undefined;
 }
 
 export interface UpdateTicketInput {
-  assigneeId?: string | null;
-  status?: TicketStatus;
-  priority?: TicketPriority;
+  assigneeId?: string | null | undefined;
+  status?: TicketStatus | undefined;
+  priority?: TicketPriority | undefined;
 }
 
 /**

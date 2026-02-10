@@ -3,8 +3,6 @@
 # =============================================================================
 # This file contains the values for production environment.
 #
-# TODO: Review and update these values before deployment
-#
 # IMPORTANT: Do NOT commit sensitive values here. Use:
 # - AWS Secrets Manager for database passwords, API keys
 # - Environment variables for CI/CD
@@ -15,7 +13,7 @@
 # General
 # -----------------------------------------------------------------------------
 
-aws_region   = "us-east-1" # TODO: Change if needed
+aws_region   = "us-east-1"
 project_name = "dynasty-futures"
 environment  = "prod"
 
@@ -24,27 +22,36 @@ environment  = "prod"
 # -----------------------------------------------------------------------------
 
 vpc_cidr           = "10.0.0.0/16"
-availability_zones = ["us-east-1a", "us-east-1b"] # TODO: Update for your region
+availability_zones = ["us-east-1a", "us-east-1b"]
 
 public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24"]
 private_subnet_cidrs  = ["10.0.10.0/24", "10.0.11.0/24"]
 database_subnet_cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
 
 # -----------------------------------------------------------------------------
-# Database (Aurora PostgreSQL)
+# Database (Aurora PostgreSQL Serverless v2)
 # -----------------------------------------------------------------------------
+# Serverless v2 auto-scales between min and max ACU.
+# 1 ACU = ~2 GB RAM. Cost is ~$0.12/ACU-hour in us-east-1.
+#
+# At 0.5 ACU min, idle cost is ~$43/month.
+# At 4 ACU max, the cluster can handle significant load.
+# Adjust max_capacity up if you see throttling in Performance Insights.
 
-aurora_instance_class_writer = "db.r6g.large"  # 2 vCPU, 16 GB RAM - $350+/month
-aurora_instance_class_reader = "db.r6g.medium" # 1 vCPU, 8 GB RAM - $175+/month
+aurora_engine_version        = "16.4"
 aurora_database_name         = "dynasty_futures"
+aurora_min_capacity          = 0.5 # ~$43/month at idle
+aurora_max_capacity          = 4   # Scales up under load
 aurora_backup_retention_days = 7
+aurora_skip_final_snapshot   = false
+aurora_deletion_protection   = true
 
 # -----------------------------------------------------------------------------
-# Cache (ElastiCache Redis)
+# Cache (ElastiCache Redis) - Skipped for now
 # -----------------------------------------------------------------------------
 
-redis_node_type       = "cache.r6g.medium" # ~$90/month
-redis_num_cache_nodes = 1
+# redis_node_type       = "cache.r6g.medium"
+# redis_num_cache_nodes = 1
 
 # -----------------------------------------------------------------------------
 # ECS
@@ -54,11 +61,13 @@ ecs_api_cpu           = 512  # 0.5 vCPU
 ecs_api_memory        = 1024 # 1 GB
 ecs_api_desired_count = 2    # 2 tasks for high availability
 
+cors_origin = "http://localhost:8080,http://localhost:3001,http://localhost:5173,https://www.dynastyfuturesdyn.com,https://dynastyfuturesdyn.com"
+
 # -----------------------------------------------------------------------------
 # Domain
 # -----------------------------------------------------------------------------
 
-domain_name = "" # TODO: Set when you have a domain (e.g., "api.dynastyfutures.com")
+domain_name = "" # TODO: Set when you have a domain (e.g., "api.dynastyfuturesdyn.com")
 
 # -----------------------------------------------------------------------------
 # Additional Tags
@@ -72,12 +81,6 @@ additional_tags = {
 # -----------------------------------------------------------------------------
 # IAM Users
 # -----------------------------------------------------------------------------
-# TODO: Add your team members here
-# Groups: admin (full access), developer (power user), readonly (view only)
-#
-# IMPORTANT: After applying, run:
-#   terraform output -json user_initial_passwords
-# to get initial passwords (users must change on first login)
 
 iam_users = [
   {
@@ -106,5 +109,4 @@ iam_users = [
   },
 ]
 
-# Set to true to create a dedicated Terraform service account for GitHub Actions
 create_terraform_user = true

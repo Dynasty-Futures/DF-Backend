@@ -10,8 +10,6 @@ variable "aws_region" {
   description = "AWS region for all resources"
   type        = string
   default     = "us-east-1"
-
-  # TODO: Change to your preferred region
 }
 
 variable "project_name" {
@@ -40,8 +38,6 @@ variable "availability_zones" {
   description = "List of availability zones to use"
   type        = list(string)
   default     = ["us-east-1a", "us-east-1b"]
-
-  # TODO: Update if using a different region
 }
 
 variable "public_subnet_cidrs" {
@@ -63,19 +59,13 @@ variable "database_subnet_cidrs" {
 }
 
 # -----------------------------------------------------------------------------
-# Database (Aurora PostgreSQL)
+# Database (Aurora PostgreSQL Serverless v2)
 # -----------------------------------------------------------------------------
 
-variable "aurora_instance_class_writer" {
-  description = "Instance class for Aurora writer"
+variable "aurora_engine_version" {
+  description = "Aurora PostgreSQL engine version"
   type        = string
-  default     = "db.r6g.large"
-}
-
-variable "aurora_instance_class_reader" {
-  description = "Instance class for Aurora reader"
-  type        = string
-  default     = "db.r6g.medium"
+  default     = "16.4"
 }
 
 variable "aurora_database_name" {
@@ -84,14 +74,38 @@ variable "aurora_database_name" {
   default     = "dynasty_futures"
 }
 
+variable "aurora_min_capacity" {
+  description = "Minimum ACU capacity for Aurora Serverless v2 (0.5 = ~$43/mo idle)"
+  type        = number
+  default     = 0.5
+}
+
+variable "aurora_max_capacity" {
+  description = "Maximum ACU capacity for Aurora Serverless v2"
+  type        = number
+  default     = 4
+}
+
 variable "aurora_backup_retention_days" {
   description = "Number of days to retain automated backups"
   type        = number
   default     = 7
 }
 
+variable "aurora_skip_final_snapshot" {
+  description = "Skip final snapshot when destroying cluster (set false for production)"
+  type        = bool
+  default     = false
+}
+
+variable "aurora_deletion_protection" {
+  description = "Enable deletion protection for Aurora cluster"
+  type        = bool
+  default     = true
+}
+
 # -----------------------------------------------------------------------------
-# Cache (ElastiCache Redis)
+# Cache (ElastiCache Redis) - For future use
 # -----------------------------------------------------------------------------
 
 variable "redis_node_type" {
@@ -111,7 +125,7 @@ variable "redis_num_cache_nodes" {
 # -----------------------------------------------------------------------------
 
 variable "ecs_api_cpu" {
-  description = "CPU units for the API service (1024 = 1 vCPU)"
+  description = "CPU units for the API service (256, 512, 1024, 2048, 4096)"
   type        = number
   default     = 512
 }
@@ -128,6 +142,12 @@ variable "ecs_api_desired_count" {
   default     = 2
 }
 
+variable "cors_origin" {
+  description = "Allowed CORS origins (comma-separated)"
+  type        = string
+  default     = "*"
+}
+
 # -----------------------------------------------------------------------------
 # Domain (Optional)
 # -----------------------------------------------------------------------------
@@ -136,8 +156,6 @@ variable "domain_name" {
   description = "Domain name for the API (e.g., api.dynastyfutures.com)"
   type        = string
   default     = ""
-
-  # TODO: Set this when you have a domain
 }
 
 # -----------------------------------------------------------------------------

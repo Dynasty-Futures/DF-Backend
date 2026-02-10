@@ -4,12 +4,13 @@
 # This is the main entry point for the production infrastructure.
 # It composes all the modules together.
 #
-# TODO: Modules are added incrementally. Uncomment as you progress:
-# - Phase 1: networking (VPC, subnets, security groups)
-# - Phase 2: aurora (database), redis (cache)
-# - Phase 3: ecs (API services), alb (load balancer)
-# - Phase 4: lambda (serverless functions)
-# - Phase 5: monitoring, waf, s3
+# Deployment order (handled automatically by Terraform dependencies):
+# 1. Networking (VPC, subnets, security groups)
+# 2. IAM (users, groups, service accounts)
+# 3. Aurora (database cluster)
+# 4. Secrets (application secrets in Secrets Manager)
+# 5. ALB (load balancer)
+# 6. ECS (cluster, service, task definition)
 # =============================================================================
 
 terraform {
@@ -19,6 +20,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
     }
   }
 }
@@ -80,22 +85,81 @@ module "networking" {
 }
 
 # -----------------------------------------------------------------------------
-# Aurora PostgreSQL Module (Uncomment when ready)
+# Aurora PostgreSQL Module (Serverless v2)
 # -----------------------------------------------------------------------------
 
-# module "aurora" {
-#   source = "../../modules/aurora"
-#
-#   project_name              = var.project_name
-#   environment               = var.environment
-#   vpc_id                    = module.networking.vpc_id
-#   database_subnet_ids       = module.networking.database_subnet_ids
-#   private_subnet_cidrs      = var.private_subnet_cidrs
-#   instance_class_writer     = var.aurora_instance_class_writer
-#   instance_class_reader     = var.aurora_instance_class_reader
-#   database_name             = var.aurora_database_name
-#   backup_retention_period   = var.aurora_backup_retention_days
-# }
+module "aurora" {
+  source = "../../modules/aurora"
+
+  project_name               = var.project_name
+  environment                = var.environment
+  db_subnet_group_name       = module.networking.db_subnet_group_name
+  database_security_group_id = module.networking.database_security_group_id
+  database_name              = var.aurora_database_name
+  engine_version             = var.aurora_engine_version
+  min_capacity               = var.aurora_min_capacity
+  max_capacity               = var.aurora_max_capacity
+  backup_retention_period    = var.aurora_backup_retention_days
+  skip_final_snapshot        = var.aurora_skip_final_snapshot
+  deletion_protection        = var.aurora_deletion_protection
+}
+
+# -----------------------------------------------------------------------------
+# Secrets Module (Application secrets in Secrets Manager)
+# -----------------------------------------------------------------------------
+
+module "secrets" {
+  source = "../../modules/secrets"
+
+  project_name = var.project_name
+  environment  = var.environment
+  database_url = module.aurora.connection_string
+}
+
+# -----------------------------------------------------------------------------
+# ALB Module (Application Load Balancer)
+# -----------------------------------------------------------------------------
+
+module "alb" {
+  source = "../../modules/alb"
+
+  project_name          = var.project_name
+  environment           = var.environment
+  vpc_id                = module.networking.vpc_id
+  public_subnet_ids     = module.networking.public_subnet_ids
+  alb_security_group_id = module.networking.alb_security_group_id
+  container_port        = 3000
+  deletion_protection   = false
+}
+
+# -----------------------------------------------------------------------------
+# ECS Module (Fargate cluster, service, ECR)
+# -----------------------------------------------------------------------------
+
+module "ecs" {
+  source = "../../modules/ecs"
+
+  project_name          = var.project_name
+  environment           = var.environment
+  private_subnet_ids    = module.networking.private_subnet_ids
+  ecs_security_group_id = module.networking.ecs_security_group_id
+  target_group_arn      = module.alb.target_group_arn
+
+  # Secrets
+  secret_arns             = module.secrets.all_secret_arns
+  database_url_secret_arn = module.secrets.database_url_secret_arn
+  jwt_secret_arn          = module.secrets.jwt_secret_arn
+
+  # Task sizing
+  cpu           = var.ecs_api_cpu
+  memory        = var.ecs_api_memory
+  desired_count = var.ecs_api_desired_count
+
+  # Application config
+  node_env    = "production"
+  log_level   = "info"
+  cors_origin = var.cors_origin
+}
 
 # -----------------------------------------------------------------------------
 # Redis Module (Uncomment when ready)
@@ -114,58 +178,11 @@ module "networking" {
 # }
 
 # -----------------------------------------------------------------------------
-# ALB Module (Uncomment when ready)
-# -----------------------------------------------------------------------------
-
-# module "alb" {
-#   source = "../../modules/alb"
-#
-#   project_name       = var.project_name
-#   environment        = var.environment
-#   vpc_id             = module.networking.vpc_id
-#   public_subnet_ids  = module.networking.public_subnet_ids
-#   domain_name        = var.domain_name
-# }
-
-# -----------------------------------------------------------------------------
-# ECS Module (Uncomment when ready)
-# -----------------------------------------------------------------------------
-
-# module "ecs" {
-#   source = "../../modules/ecs"
-#
-#   project_name         = var.project_name
-#   environment          = var.environment
-#   vpc_id               = module.networking.vpc_id
-#   private_subnet_ids   = module.networking.private_subnet_ids
-#   alb_target_group_arn = module.alb.target_group_arn
-#   alb_security_group_id = module.alb.security_group_id
-#   
-#   api_cpu           = var.ecs_api_cpu
-#   api_memory        = var.ecs_api_memory
-#   api_desired_count = var.ecs_api_desired_count
-#   
-#   database_url     = module.aurora.connection_string
-#   redis_url        = module.redis.connection_string
-# }
-
-# -----------------------------------------------------------------------------
 # S3 Module (Uncomment when ready)
 # -----------------------------------------------------------------------------
 
 # module "s3" {
 #   source = "../../modules/s3"
-#
-#   project_name = var.project_name
-#   environment  = var.environment
-# }
-
-# -----------------------------------------------------------------------------
-# Secrets Module (Uncomment when ready)
-# -----------------------------------------------------------------------------
-
-# module "secrets" {
-#   source = "../../modules/secrets"
 #
 #   project_name = var.project_name
 #   environment  = var.environment
@@ -180,8 +197,7 @@ module "networking" {
 #
 #   project_name = var.project_name
 #   environment  = var.environment
-#   
+#
 #   ecs_cluster_name  = module.ecs.cluster_name
 #   aurora_cluster_id = module.aurora.cluster_id
-#   redis_cluster_id  = module.redis.cluster_id
 # }

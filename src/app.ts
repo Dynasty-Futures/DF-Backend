@@ -71,11 +71,11 @@ export const createApp = (): Application => {
       morgan(
         (tokens, req, res) => {
           return JSON.stringify({
-            method: tokens['method'](req, res),
-            url: tokens['url'](req, res),
-            status: tokens['status'](req, res),
-            contentLength: tokens['res'](req, res, 'content-length'),
-            responseTime: `${tokens['response-time'](req, res)}ms`,
+            method: tokens['method']?.(req, res) ?? '-',
+            url: tokens['url']?.(req, res) ?? '-',
+            status: tokens['status']?.(req, res) ?? '-',
+            contentLength: tokens['res']?.(req, res, 'content-length') ?? '-',
+            responseTime: `${tokens['response-time']?.(req, res) ?? '0'}ms`,
             requestId: req.requestId,
           });
         },

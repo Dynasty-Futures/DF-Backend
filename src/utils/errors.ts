@@ -13,7 +13,7 @@ export class AppError extends Error {
   public readonly code: string;
   public readonly statusCode: number;
   public readonly isOperational: boolean;
-  public readonly details?: ErrorDetails;
+  public readonly details?: ErrorDetails | undefined;
 
   constructor(
     message: string,
@@ -136,69 +136,72 @@ export class ServiceUnavailableError extends AppError {
 /**
  * Authentication errors
  */
-export class AuthenticationError extends UnauthorizedError {
+export class AuthenticationError extends AppError {
   constructor(message = 'Authentication failed', details?: ErrorDetails) {
-    super(message, details);
-    this.code = 'AUTHENTICATION_ERROR';
+    super(message, 'AUTHENTICATION_ERROR', 401, true, details);
   }
 }
 
 /**
  * Token expired
  */
-export class TokenExpiredError extends UnauthorizedError {
+export class TokenExpiredError extends AppError {
   constructor(message = 'Token expired', details?: ErrorDetails) {
-    super(message, details);
-    this.code = 'TOKEN_EXPIRED';
+    super(message, 'TOKEN_EXPIRED', 401, true, details);
   }
 }
 
 /**
  * Invalid token
  */
-export class InvalidTokenError extends UnauthorizedError {
+export class InvalidTokenError extends AppError {
   constructor(message = 'Invalid token', details?: ErrorDetails) {
-    super(message, details);
-    this.code = 'INVALID_TOKEN';
+    super(message, 'INVALID_TOKEN', 401, true, details);
   }
 }
 
 /**
  * Account not found
  */
-export class AccountNotFoundError extends NotFoundError {
+export class AccountNotFoundError extends AppError {
   constructor(accountId?: string) {
     super(
       accountId ? `Account ${accountId} not found` : 'Account not found',
+      'ACCOUNT_NOT_FOUND',
+      404,
+      true,
       accountId ? { accountId } : undefined
     );
-    this.code = 'ACCOUNT_NOT_FOUND';
   }
 }
 
 /**
  * User not found
  */
-export class UserNotFoundError extends NotFoundError {
+export class UserNotFoundError extends AppError {
   constructor(userId?: string) {
     super(
       userId ? `User ${userId} not found` : 'User not found',
+      'USER_NOT_FOUND',
+      404,
+      true,
       userId ? { userId } : undefined
     );
-    this.code = 'USER_NOT_FOUND';
   }
 }
 
 /**
  * Account suspended
  */
-export class AccountSuspendedError extends ForbiddenError {
+export class AccountSuspendedError extends AppError {
   constructor(reason?: string) {
     super(
       reason ? `Account suspended: ${reason}` : 'Account suspended',
+      'ACCOUNT_SUSPENDED',
+      403,
+      true,
       reason ? { reason } : undefined
     );
-    this.code = 'ACCOUNT_SUSPENDED';
   }
 }
 
@@ -214,10 +217,9 @@ export class RuleViolationError extends AppError {
 /**
  * Insufficient funds
  */
-export class InsufficientFundsError extends BadRequestError {
+export class InsufficientFundsError extends AppError {
   constructor(message = 'Insufficient funds', details?: ErrorDetails) {
-    super(message, details);
-    this.code = 'INSUFFICIENT_FUNDS';
+    super(message, 'INSUFFICIENT_FUNDS', 400, true, details);
   }
 }
 

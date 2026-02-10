@@ -21,7 +21,7 @@ export const prisma =
   });
 
 // Log queries in development
-if (process.env.NODE_ENV === 'development') {
+if (process.env['NODE_ENV'] === 'development') {
   prisma.$on('query' as never, (e: { query: string; params: string; duration: number }) => {
     logger.debug({
       query: e.query,
@@ -32,7 +32,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Prevent multiple instances in development
-if (process.env.NODE_ENV !== 'production') {
+if (process.env['NODE_ENV'] !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
