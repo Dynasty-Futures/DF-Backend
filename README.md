@@ -22,7 +22,7 @@ Dynasty Futures provides:
 | Infrastructure | Terraform |
 | CI/CD | GitHub Actions |
 | Payments | Stripe |
-| Trading Data | YourPropFirm API |
+| Trading Data and Trading UI| YourPropFirm API |
 
 ## Project Structure
 
