@@ -8,8 +8,6 @@
 #   docker-compose exec db psql -U postgres dynasty_futures  # Connect to DB
 # =============================================================================
 
-version: '3.8'
-
 services:
   # ===========================================================================
   # PostgreSQL Database
@@ -23,7 +21,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dynasty_futures
     ports:
-      - '5433:5432'  # Use 5433 on host to avoid conflict with local PostgreSQL
+      - '5433:5432' # Use 5433 on host to avoid conflict with local PostgreSQL
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -112,6 +110,6 @@ volumes:
 # =============================================================================
 # Networks
 # =============================================================================
-networks:
-  default:
-    name: dynasty-futures-network
+# networks:
+#   default:
+#     name: dynasty-futures-network
