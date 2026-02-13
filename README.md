@@ -65,7 +65,8 @@ cp .env.example .env
 # Run database migrations
 npx prisma migrate dev
 
-# Start development server
+# Start development server (locally)
+docker-compose -d up db redis
 npm run dev
 ```
 
