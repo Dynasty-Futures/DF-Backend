@@ -131,52 +131,49 @@ module "ses" {
 
 # -----------------------------------------------------------------------------
 # ALB Module (Application Load Balancer)
-# TODO: Uncomment when AWS enables load balancer creation for this account.
-#       Contact AWS Support to lift the restriction, then uncomment both
-#       ALB and ECS modules and run `terraform apply`.
 # -----------------------------------------------------------------------------
 
-# module "alb" {
-#   source = "../../modules/alb"
-#
-#   project_name          = var.project_name
-#   environment           = var.environment
-#   vpc_id                = module.networking.vpc_id
-#   public_subnet_ids     = module.networking.public_subnet_ids
-#   alb_security_group_id = module.networking.alb_security_group_id
-#   container_port        = 3000
-#   deletion_protection   = false
-# }
+module "alb" {
+  source = "../../modules/alb"
+
+  project_name          = var.project_name
+  environment           = var.environment
+  vpc_id                = module.networking.vpc_id
+  public_subnet_ids     = module.networking.public_subnet_ids
+  alb_security_group_id = module.networking.alb_security_group_id
+  container_port        = 3000
+  deletion_protection   = false
+}
 
 # -----------------------------------------------------------------------------
 # ECS Module (Fargate cluster, service, ECR)
 # TODO: Uncomment together with ALB module above.
 # -----------------------------------------------------------------------------
 
-# module "ecs" {
-#   source = "../../modules/ecs"
-#
-#   project_name          = var.project_name
-#   environment           = var.environment
-#   private_subnet_ids    = module.networking.private_subnet_ids
-#   ecs_security_group_id = module.networking.ecs_security_group_id
-#   target_group_arn      = module.alb.target_group_arn
-#
-#   # Secrets
-#   secret_arns             = module.secrets.all_secret_arns
-#   database_url_secret_arn = module.secrets.database_url_secret_arn
-#   jwt_secret_arn          = module.secrets.jwt_secret_arn
-#
-#   # Task sizing
-#   cpu           = var.ecs_api_cpu
-#   memory        = var.ecs_api_memory
-#   desired_count = var.ecs_api_desired_count
-#
-#   # Application config
-#   node_env    = "production"
-#   log_level   = "info"
-#   cors_origin = var.cors_origin
-# }
+module "ecs" {
+  source = "../../modules/ecs"
+
+  project_name          = var.project_name
+  environment           = var.environment
+  private_subnet_ids    = module.networking.private_subnet_ids
+  ecs_security_group_id = module.networking.ecs_security_group_id
+  target_group_arn      = module.alb.target_group_arn
+
+  # Secrets
+  secret_arns             = module.secrets.all_secret_arns
+  database_url_secret_arn = module.secrets.database_url_secret_arn
+  jwt_secret_arn          = module.secrets.jwt_secret_arn
+
+  # Task sizing
+  cpu           = var.ecs_api_cpu
+  memory        = var.ecs_api_memory
+  desired_count = var.ecs_api_desired_count
+
+  # Application config
+  node_env    = "production"
+  log_level   = "info"
+  cors_origin = var.cors_origin
+}
 
 # -----------------------------------------------------------------------------
 # Redis Module (Uncomment when ready)
