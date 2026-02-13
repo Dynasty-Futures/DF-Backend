@@ -197,6 +197,15 @@ resource "aws_iam_role_policy" "task" {
           "ssmmessages:OpenDataChannel"
         ]
         Resource = "*"
+      },
+      {
+        # Allow sending emails via SES (support ticket notifications, etc.)
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
       }
     ]
   })

@@ -44,6 +44,8 @@ const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   S3_BUCKET_DOCUMENTS: z.string().optional(),
+  SES_FROM_EMAIL: z.string().email().default('noreply@dynastyfuturesdyn.com'),
+  SUPPORT_EMAIL: z.string().email().default('support@dynastyfuturesdyn.com'),
 
   // Security
   BCRYPT_ROUNDS: z.string().default('12').transform(Number),
@@ -135,6 +137,10 @@ export const config = {
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
     s3: {
       documentsBucket: env.S3_BUCKET_DOCUMENTS,
+    },
+    ses: {
+      fromEmail: env.SES_FROM_EMAIL,
+      supportEmail: env.SUPPORT_EMAIL,
     },
   },
 

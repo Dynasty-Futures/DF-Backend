@@ -1,6 +1,7 @@
 import { SupportTicket, TicketPriority, TicketStatus } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { NotFoundError, ValidationError } from '../utils/errors.js';
+import { sendSupportTicketNotification } from './email.service.js';
 import {
   createSupportTicket as createTicketInDb,
   getSupportTicketById,
@@ -89,6 +90,11 @@ export const createTicket = async (
   });
 
   logger.info({ ticketId: ticket.id }, 'Support ticket created successfully');
+
+  // Fire-and-forget: send email notification to support team
+  sendSupportTicketNotification(ticket).catch((err) => {
+    logger.error({ err, ticketId: ticket.id }, 'Failed to send support ticket email notification');
+  });
 
   return ticket;
 };

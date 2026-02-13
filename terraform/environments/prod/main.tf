@@ -117,6 +117,19 @@ module "secrets" {
 }
 
 # -----------------------------------------------------------------------------
+# SES Module (Email Sending - Domain Verification + DKIM)
+# -----------------------------------------------------------------------------
+
+module "ses" {
+  source = "../../modules/ses"
+
+  project_name  = var.project_name
+  environment   = var.environment
+  domain        = "dynastyfuturesdyn.com"
+  support_email = "support@dynastyfuturesdyn.com"
+}
+
+# -----------------------------------------------------------------------------
 # ALB Module (Application Load Balancer)
 # TODO: Uncomment when AWS enables load balancer creation for this account.
 #       Contact AWS Support to lift the restriction, then uncomment both

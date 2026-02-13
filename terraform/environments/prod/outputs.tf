@@ -62,6 +62,25 @@ output "aurora_database_name" {
 }
 
 # -----------------------------------------------------------------------------
+# SES (DNS records to add manually in Microsoft DNS)
+# -----------------------------------------------------------------------------
+
+output "ses_verification_txt_record" {
+  description = "TXT record to add in Microsoft DNS for SES domain verification"
+  value       = module.ses.ses_verification_txt_record
+}
+
+output "ses_dkim_cname_records" {
+  description = "CNAME records to add in Microsoft DNS for DKIM email authentication"
+  value       = module.ses.ses_dkim_cname_records
+}
+
+output "ses_domain_identity_arn" {
+  description = "ARN of the SES domain identity"
+  value       = module.ses.domain_identity_arn
+}
+
+# -----------------------------------------------------------------------------
 # ALB (Uncomment when ALB module is enabled)
 # -----------------------------------------------------------------------------
 
