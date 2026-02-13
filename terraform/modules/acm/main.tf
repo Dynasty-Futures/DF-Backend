@@ -16,18 +16,18 @@
 # - ACM certificate with DNS validation
 # =============================================================================
 
-resource "aws_acm_certificate" "api" {
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+# resource "aws_acm_certificate" "api" {
+#   domain_name       = var.domain_name
+#   validation_method = "DNS"
 
-  # Include wildcard if requested
-  subject_alternative_names = var.subject_alternative_names
+#   # Include wildcard if requested
+#   subject_alternative_names = var.subject_alternative_names
 
-  lifecycle {
-    create_before_destroy = true
-  }
+#   lifecycle {
+#     create_before_destroy = true
+#   }
 
-  tags = {
-    Name = "${var.project_name}-api-cert-${var.environment}"
-  }
-}
+#   tags = {
+#     Name = "${var.project_name}-api-cert-${var.environment}"
+#   }
+# }
