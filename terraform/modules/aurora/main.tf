@@ -91,6 +91,9 @@ resource "aws_rds_cluster" "main" {
   # Deletion protection
   deletion_protection = var.deletion_protection
 
+  # Enable Data API (required for RDS Query Editor)
+  enable_http_endpoint = true
+
   # Apply changes immediately (safe for serverless)
   apply_immediately = true
 
