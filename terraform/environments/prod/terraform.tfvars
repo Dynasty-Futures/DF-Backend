@@ -72,7 +72,7 @@ cors_origin = "http://localhost:8080,http://localhost:3001,http://localhost:5173
 # Step 4: Set enable_https = true and apply → ALB switches to HTTPS
 
 domain_name  = "api.dynastyfuturesdyn.com"
-enable_https = false # Set to true AFTER ACM certificate is validated
+enable_https = true # ACM certificate validated and issued
 
 # -----------------------------------------------------------------------------
 # Additional Tags
