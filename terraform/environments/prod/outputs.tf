@@ -62,37 +62,37 @@ output "aurora_database_name" {
 }
 
 # -----------------------------------------------------------------------------
-# ALB
+# ALB (Uncomment when ALB module is enabled)
 # -----------------------------------------------------------------------------
 
-output "alb_dns_name" {
-  description = "DNS name of the Application Load Balancer (use this to access the API)"
-  value       = module.alb.alb_dns_name
-}
+# output "alb_dns_name" {
+#   description = "DNS name of the Application Load Balancer (use this to access the API)"
+#   value       = module.alb.alb_dns_name
+# }
 
 # -----------------------------------------------------------------------------
-# ECS
+# ECS (Uncomment when ECS module is enabled)
 # -----------------------------------------------------------------------------
 
-output "ecs_cluster_name" {
-  description = "Name of the ECS cluster"
-  value       = module.ecs.cluster_name
-}
+# output "ecs_cluster_name" {
+#   description = "Name of the ECS cluster"
+#   value       = module.ecs.cluster_name
+# }
 
-output "ecs_service_name" {
-  description = "Name of the ECS API service"
-  value       = module.ecs.service_name
-}
+# output "ecs_service_name" {
+#   description = "Name of the ECS API service"
+#   value       = module.ecs.service_name
+# }
 
-output "ecr_repository_url" {
-  description = "URL of the ECR repository (for docker push)"
-  value       = module.ecs.ecr_repository_url
-}
+# output "ecr_repository_url" {
+#   description = "URL of the ECR repository (for docker push)"
+#   value       = module.ecs.ecr_repository_url
+# }
 
-output "ecs_task_definition" {
-  description = "ECS task definition family"
-  value       = module.ecs.task_definition_family
-}
+# output "ecs_task_definition" {
+#   description = "ECS task definition family"
+#   value       = module.ecs.task_definition_family
+# }
 
 # -----------------------------------------------------------------------------
 # IAM

@@ -31,8 +31,9 @@ variable "ecs_security_group_id" {
 }
 
 variable "target_group_arn" {
-  description = "ARN of the ALB target group (from ALB module)"
+  description = "ARN of the ALB target group (from ALB module). Leave empty to run without a load balancer."
   type        = string
+  default     = ""
 }
 
 # -----------------------------------------------------------------------------
