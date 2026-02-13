@@ -153,9 +153,15 @@ variable "cors_origin" {
 # -----------------------------------------------------------------------------
 
 variable "domain_name" {
-  description = "Domain name for the API (e.g., api.dynastyfutures.com)"
+  description = "Domain name for the API (e.g., api.dynastyfuturesdyn.com). When set, an ACM certificate is created."
   type        = string
   default     = ""
+}
+
+variable "enable_https" {
+  description = "Enable HTTPS on the ALB. Only set to true AFTER the ACM certificate has been validated via DNS."
+  type        = bool
+  default     = false
 }
 
 # -----------------------------------------------------------------------------

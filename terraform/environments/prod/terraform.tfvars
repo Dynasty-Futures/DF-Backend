@@ -64,10 +64,15 @@ ecs_api_desired_count = 2    # 2 tasks for high availability
 cors_origin = "http://localhost:8080,http://localhost:3001,http://localhost:5173,https://www.dynastyfuturesdyn.com,https://dynastyfuturesdyn.com"
 
 # -----------------------------------------------------------------------------
-# Domain
+# Domain & HTTPS
 # -----------------------------------------------------------------------------
+# Step 1: Set domain_name and apply → creates ACM cert, outputs DNS validation records
+# Step 2: Add the CNAME validation record in Vercel DNS
+# Step 3: Wait for cert to be ISSUED (check in AWS Console > ACM)
+# Step 4: Set enable_https = true and apply → ALB switches to HTTPS
 
-domain_name = "" # TODO: Set when you have a domain (e.g., "api.dynastyfuturesdyn.com")
+domain_name  = "api.dynastyfuturesdyn.com"
+enable_https = false # Set to true AFTER ACM certificate is validated
 
 # -----------------------------------------------------------------------------
 # Additional Tags

@@ -31,3 +31,8 @@ output "http_listener_arn" {
   description = "ARN of the HTTP listener"
   value       = aws_lb_listener.http.arn
 }
+
+output "https_listener_arn" {
+  description = "ARN of the HTTPS listener (empty if no ACM certificate provided)"
+  value       = length(aws_lb_listener.https) > 0 ? aws_lb_listener.https[0].arn : ""
+}

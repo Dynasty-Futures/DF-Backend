@@ -38,3 +38,9 @@ variable "deletion_protection" {
   type        = bool
   default     = false
 }
+
+variable "acm_certificate_arn" {
+  description = "ARN of the ACM certificate for HTTPS. When provided, an HTTPS listener is created and HTTP redirects to HTTPS."
+  type        = string
+  default     = ""
+}

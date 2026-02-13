@@ -81,6 +81,25 @@ output "ses_domain_identity_arn" {
 }
 
 # -----------------------------------------------------------------------------
+# ACM (SSL Certificate)
+# -----------------------------------------------------------------------------
+
+output "acm_certificate_arn" {
+  description = "ARN of the ACM certificate (use to verify status in AWS Console)"
+  value       = length(module.acm) > 0 ? module.acm[0].certificate_arn : "N/A - no domain configured"
+}
+
+output "acm_certificate_status" {
+  description = "Status of the ACM certificate (PENDING_VALIDATION → ISSUED once DNS is verified)"
+  value       = length(module.acm) > 0 ? module.acm[0].certificate_status : "N/A"
+}
+
+output "acm_dns_validation_records" {
+  description = "CNAME records to add in Vercel DNS to validate the ACM certificate"
+  value       = length(module.acm) > 0 ? module.acm[0].dns_validation_records : []
+}
+
+# -----------------------------------------------------------------------------
 # ALB
 # -----------------------------------------------------------------------------
 

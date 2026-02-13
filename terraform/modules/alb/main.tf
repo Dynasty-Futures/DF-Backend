@@ -67,25 +67,32 @@ resource "aws_lb_target_group" "api" {
 # -----------------------------------------------------------------------------
 # HTTP Listener (Port 80)
 # -----------------------------------------------------------------------------
+# When HTTPS is enabled (ACM cert provided), HTTP redirects to HTTPS.
+# Otherwise, HTTP forwards directly to the target group.
 
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
 
-  # TODO: When adding HTTPS, change this to redirect:
-  # default_action {
-  #   type = "redirect"
-  #   redirect {
-  #     port        = "443"
-  #     protocol    = "HTTPS"
-  #     status_code = "HTTP_301"
-  #   }
-  # }
+  dynamic "default_action" {
+    for_each = var.acm_certificate_arn != "" ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
+  dynamic "default_action" {
+    for_each = var.acm_certificate_arn == "" ? [1] : []
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.api.arn
+    }
   }
 
   tags = {
@@ -94,18 +101,24 @@ resource "aws_lb_listener" "http" {
 }
 
 # -----------------------------------------------------------------------------
-# HTTPS Listener (Port 443) - Uncomment when ACM certificate is ready
+# HTTPS Listener (Port 443) - Created when ACM certificate is provided
 # -----------------------------------------------------------------------------
 
-# resource "aws_lb_listener" "https" {
-#   load_balancer_arn = aws_lb.main.arn
-#   port              = 443
-#   protocol          = "HTTPS"
-#   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-#   certificate_arn   = var.acm_certificate_arn
-#
-#   default_action {
-#     type             = "forward"
-#     target_group_arn = aws_lb_target_group.api.arn
-#   }
-# }
+resource "aws_lb_listener" "https" {
+  count = var.acm_certificate_arn != "" ? 1 : 0
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+
+  tags = {
+    Name = "${var.project_name}-https-listener-${var.environment}"
+  }
+}

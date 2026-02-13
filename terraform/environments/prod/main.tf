@@ -130,6 +130,29 @@ module "ses" {
 }
 
 # -----------------------------------------------------------------------------
+# ACM Module (SSL Certificate for API domain)
+# -----------------------------------------------------------------------------
+# Creates an ACM certificate for the API subdomain. The certificate starts in
+# PENDING_VALIDATION state. You must add the CNAME validation record to your
+# DNS provider (Vercel) before the certificate will be ISSUED.
+#
+# Deployment flow:
+# 1. terraform apply (with enable_https = false) → creates cert, outputs DNS records
+# 2. Add CNAME validation record in Vercel DNS dashboard
+# 3. Wait 5-30 min for AWS to validate the certificate
+# 4. Add CNAME record: api.dynastyfuturesdyn.com → ALB DNS name in Vercel DNS
+# 5. terraform apply (with enable_https = true) → enables HTTPS on ALB
+
+module "acm" {
+  source = "../../modules/acm"
+  count  = var.domain_name != "" ? 1 : 0
+
+  project_name = var.project_name
+  environment  = var.environment
+  domain_name  = var.domain_name
+}
+
+# -----------------------------------------------------------------------------
 # ALB Module (Application Load Balancer)
 # -----------------------------------------------------------------------------
 
@@ -143,6 +166,9 @@ module "alb" {
   alb_security_group_id = module.networking.alb_security_group_id
   container_port        = 3000
   deletion_protection   = false
+
+  # HTTPS: pass the ACM cert ARN only when enable_https is true and a domain is configured
+  acm_certificate_arn = var.enable_https && length(module.acm) > 0 ? module.acm[0].certificate_arn : ""
 }
 
 # -----------------------------------------------------------------------------
