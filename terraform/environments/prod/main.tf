@@ -119,6 +119,10 @@ module "secrets" {
   stripe_secret_key      = var.stripe_secret_key
   stripe_webhook_secret  = var.stripe_webhook_secret
   stripe_publishable_key = var.stripe_publishable_key
+
+  # Google OAuth
+  google_client_id     = var.google_client_id
+  google_client_secret = var.google_client_secret
 }
 
 # -----------------------------------------------------------------------------
@@ -197,6 +201,8 @@ module "ecs" {
   stripe_secret_key_arn      = module.secrets.stripe_secret_key_arn
   stripe_webhook_secret_arn  = module.secrets.stripe_webhook_secret_arn
   stripe_publishable_key_arn = module.secrets.stripe_publishable_key_arn
+  google_client_id_arn       = module.secrets.google_client_id_arn
+  google_client_secret_arn   = module.secrets.google_client_secret_arn
 
   # Task sizing
   cpu           = var.ecs_api_cpu
