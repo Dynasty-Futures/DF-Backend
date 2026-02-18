@@ -5,6 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "up": "docker compose up -d db redis",
+    "down": "docker compose down",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
