@@ -114,6 +114,11 @@ module "secrets" {
   project_name = var.project_name
   environment  = var.environment
   database_url = module.aurora.connection_string
+
+  # Stripe
+  stripe_secret_key      = var.stripe_secret_key
+  stripe_webhook_secret  = var.stripe_webhook_secret
+  stripe_publishable_key = var.stripe_publishable_key
 }
 
 # -----------------------------------------------------------------------------
@@ -186,9 +191,12 @@ module "ecs" {
   target_group_arn      = module.alb.target_group_arn
 
   # Secrets
-  secret_arns             = module.secrets.all_secret_arns
-  database_url_secret_arn = module.secrets.database_url_secret_arn
-  jwt_secret_arn          = module.secrets.jwt_secret_arn
+  secret_arns                = module.secrets.all_secret_arns
+  database_url_secret_arn    = module.secrets.database_url_secret_arn
+  jwt_secret_arn             = module.secrets.jwt_secret_arn
+  stripe_secret_key_arn      = module.secrets.stripe_secret_key_arn
+  stripe_webhook_secret_arn  = module.secrets.stripe_webhook_secret_arn
+  stripe_publishable_key_arn = module.secrets.stripe_publishable_key_arn
 
   # Task sizing
   cpu           = var.ecs_api_cpu

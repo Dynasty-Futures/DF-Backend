@@ -13,6 +13,7 @@ import {
 } from './api/middleware/index.js';
 import healthRoutes from './api/routes/health.js';
 import v1Routes from './api/routes/v1/index.js';
+import stripeWebhookRoutes from './api/routes/webhooks.js';
 
 // =============================================================================
 // Create Express Application
@@ -57,6 +58,14 @@ export const createApp = (): Application => {
 
   // Request ID
   app.use(requestIdMiddleware);
+
+  // Stripe webhook — must be mounted before express.json() so the raw body
+  // is available for signature verification.
+  app.use(
+    '/webhooks/stripe',
+    express.raw({ type: 'application/json' }),
+    stripeWebhookRoutes
+  );
 
   // Body parsing
   app.use(express.json({ limit: '10mb' }));

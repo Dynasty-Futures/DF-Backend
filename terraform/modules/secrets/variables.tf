@@ -17,3 +17,25 @@ variable "database_url" {
   type        = string
   sensitive   = true
 }
+
+# -----------------------------------------------------------------------------
+# Stripe
+# -----------------------------------------------------------------------------
+
+variable "stripe_secret_key" {
+  description = "Stripe API secret key (sk_live_... or sk_test_...)"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret (whsec_...)"
+  type        = string
+  sensitive   = true
+}
+
+variable "stripe_publishable_key" {
+  description = "Stripe publishable key (pk_live_... or pk_test_...)"
+  type        = string
+  sensitive   = true
+}

@@ -145,12 +145,18 @@ jobs:
     # TODO: Add these secrets to your GitHub repository:
     # - AWS_ACCESS_KEY_ID: IAM user access key
     # - AWS_SECRET_ACCESS_KEY: IAM user secret key
+    # - TF_VAR_stripe_secret_key: Stripe secret API key (sk_live_...)
+    # - TF_VAR_stripe_webhook_secret: Stripe webhook signing secret (whsec_...)
+    # - TF_VAR_stripe_publishable_key: Stripe publishable key (pk_live_...)
     #
     # Go to: Repository Settings -> Secrets and variables -> Actions -> New repository secret
 
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
+      TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
+      TF_VAR_stripe_publishable_key: ${{ secrets.TF_VAR_STRIPE_PUBLISHABLE_KEY }}
 
     outputs:
       plan_exitcode: ${{ steps.plan.outputs.exitcode }}
@@ -254,6 +260,9 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
+      TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
+      TF_VAR_stripe_publishable_key: ${{ secrets.TF_VAR_STRIPE_PUBLISHABLE_KEY }}
 
     steps:
       - name: Checkout
@@ -306,6 +315,9 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
+      TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
+      TF_VAR_stripe_publishable_key: ${{ secrets.TF_VAR_STRIPE_PUBLISHABLE_KEY }}
 
     steps:
       - name: Checkout

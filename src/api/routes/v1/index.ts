@@ -3,6 +3,7 @@ import supportRoutes from './support.js';
 import authRoutes from './auth.js';
 import usersRoutes from './users.js';
 import accountsRoutes from './accounts.js';
+import checkoutRoutes from './checkout.js';
 
 // =============================================================================
 // V1 API Routes
@@ -20,6 +21,7 @@ router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/support', supportRoutes);
 router.use('/accounts', accountsRoutes);
+router.use('/checkout', checkoutRoutes);
 
 // router.use('/challenges', challengesRoutes);
 // router.use('/payouts', payoutsRoutes);

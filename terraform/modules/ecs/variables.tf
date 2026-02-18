@@ -55,6 +55,21 @@ variable "jwt_secret_arn" {
   type        = string
 }
 
+variable "stripe_secret_key_arn" {
+  description = "ARN of the STRIPE_SECRET_KEY secret in Secrets Manager"
+  type        = string
+}
+
+variable "stripe_webhook_secret_arn" {
+  description = "ARN of the STRIPE_WEBHOOK_SECRET secret in Secrets Manager"
+  type        = string
+}
+
+variable "stripe_publishable_key_arn" {
+  description = "ARN of the STRIPE_PUBLISHABLE_KEY secret in Secrets Manager"
+  type        = string
+}
+
 # -----------------------------------------------------------------------------
 # Task Configuration
 # -----------------------------------------------------------------------------

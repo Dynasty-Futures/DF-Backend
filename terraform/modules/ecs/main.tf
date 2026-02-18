@@ -249,6 +249,9 @@ resource "aws_ecs_task_definition" "api" {
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
         { name = "JWT_SECRET", valueFrom = var.jwt_secret_arn },
+        { name = "STRIPE_SECRET_KEY", valueFrom = var.stripe_secret_key_arn },
+        { name = "STRIPE_WEBHOOK_SECRET", valueFrom = var.stripe_webhook_secret_arn },
+        { name = "STRIPE_PUBLISHABLE_KEY", valueFrom = var.stripe_publishable_key_arn },
       ]
 
       # Health check

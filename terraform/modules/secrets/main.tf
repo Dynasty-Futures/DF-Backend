@@ -8,6 +8,9 @@
 # Resources created:
 # - DATABASE_URL secret (constructed from Aurora outputs)
 # - JWT_SECRET (auto-generated)
+# - STRIPE_SECRET_KEY
+# - STRIPE_WEBHOOK_SECRET
+# - STRIPE_PUBLISHABLE_KEY
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -49,4 +52,50 @@ resource "aws_secretsmanager_secret" "jwt_secret" {
 resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_id     = aws_secretsmanager_secret.jwt_secret.id
   secret_string = random_password.jwt_secret.result
+}
+
+# -----------------------------------------------------------------------------
+# Stripe Secrets
+# -----------------------------------------------------------------------------
+
+resource "aws_secretsmanager_secret" "stripe_secret_key" {
+  name        = "${var.project_name}/${var.environment}/app/stripe-secret-key"
+  description = "Stripe API secret key for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-stripe-secret-key-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "stripe_secret_key" {
+  secret_id     = aws_secretsmanager_secret.stripe_secret_key.id
+  secret_string = var.stripe_secret_key
+}
+
+resource "aws_secretsmanager_secret" "stripe_webhook_secret" {
+  name        = "${var.project_name}/${var.environment}/app/stripe-webhook-secret"
+  description = "Stripe webhook signing secret for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-stripe-webhook-secret-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "stripe_webhook_secret" {
+  secret_id     = aws_secretsmanager_secret.stripe_webhook_secret.id
+  secret_string = var.stripe_webhook_secret
+}
+
+resource "aws_secretsmanager_secret" "stripe_publishable_key" {
+  name        = "${var.project_name}/${var.environment}/app/stripe-publishable-key"
+  description = "Stripe publishable key for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-stripe-publishable-key-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "stripe_publishable_key" {
+  secret_id     = aws_secretsmanager_secret.stripe_publishable_key.id
+  secret_string = var.stripe_publishable_key
 }
