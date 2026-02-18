@@ -44,13 +44,15 @@ RUN addgroup -g 1001 -S nodejs && \
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install production dependencies only
+# Install production dependencies only + tsx for seed scripts
 RUN npm ci --only=production && \
     npx prisma generate && \
+    npm install tsx && \
     npm cache clean --force
 
-# Copy built application
+# Copy built application and seed script
 COPY --from=builder /app/dist ./dist
+COPY prisma/seed.ts ./prisma/seed.ts
 
 # Set ownership
 RUN chown -R nodejs:nodejs /app

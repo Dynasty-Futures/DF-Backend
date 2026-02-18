@@ -35,6 +35,11 @@ on:
         required: true
         default: true
         type: boolean
+      run_seed:
+        description: 'Run database seed (account types)'
+        required: true
+        default: false
+        type: boolean
 
 # -----------------------------------------------------------------------------
 # Environment Variables
@@ -206,14 +211,94 @@ jobs:
           echo "Migration completed successfully."
 
   # ---------------------------------------------------------------------------
+  # Run Database Seed (Manual Trigger Only)
+  # ---------------------------------------------------------------------------
+  seed:
+    name: Run Seed
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_seed == 'true'
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get Network Configuration
+        id: network
+        run: |
+          NETWORK_CONFIG=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration' \
+            --output json)
+
+          SUBNETS=$(echo $NETWORK_CONFIG | jq -r '.subnets | join(",")')
+          SECURITY_GROUPS=$(echo $NETWORK_CONFIG | jq -r '.securityGroups | join(",")')
+
+          echo "subnets=$SUBNETS" >> $GITHUB_OUTPUT
+          echo "security_groups=$SECURITY_GROUPS" >> $GITHUB_OUTPUT
+
+      - name: Run Seed Task
+        id: seed
+        run: |
+          TASK_DEF_ARN=$(aws ecs describe-task-definition \
+            --task-definition $TASK_DEFINITION_FAMILY \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster $ECS_CLUSTER \
+            --task-definition $TASK_DEF_ARN \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.network.outputs.subnets }}],securityGroups=[${{ steps.network.outputs.security_groups }}],assignPublicIp=DISABLED}" \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "api",
+                "command": ["npx", "tsx", "prisma/seed.ts"]
+              }]
+            }' \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "task_arn=$TASK_ARN" >> $GITHUB_OUTPUT
+          echo "Running seed task: $TASK_ARN"
+
+      - name: Wait for Seed to Complete
+        run: |
+          echo "Waiting for seed task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster $ECS_CLUSTER \
+            --tasks ${{ steps.seed.outputs.task_arn }}
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster $ECS_CLUSTER \
+            --tasks ${{ steps.seed.outputs.task_arn }} \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Seed failed with exit code: $EXIT_CODE"
+            echo "## Seed Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Exit code: $EXIT_CODE" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "## Seed Successful" >> $GITHUB_STEP_SUMMARY
+          echo "Database seeded with account types and challenge rules."
+
+  # ---------------------------------------------------------------------------
   # Deploy to ECS
   # ---------------------------------------------------------------------------
   deploy:
     name: Deploy to ECS
     runs-on: ubuntu-latest
-    needs: [build-and-push, migrate]
-    # Run even if migrate was skipped (but not if it failed)
-    if: always() && needs.build-and-push.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+    needs: [build-and-push, migrate, seed]
+    # Run even if migrate/seed were skipped (but not if they failed)
+    if: always() && needs.build-and-push.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.seed.result == 'success' || needs.seed.result == 'skipped')
 
     steps:
       - name: Configure AWS Credentials

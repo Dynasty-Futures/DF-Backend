@@ -5,12 +5,22 @@ import { PaymentError, ValidationError } from '../utils/errors.js';
 import { provisionAccount } from './challenge.service.js';
 
 // =============================================================================
-// Stripe Client
+// Stripe Client (lazy-initialized)
 // =============================================================================
 
-const stripe = new Stripe(config.stripe.secretKey ?? '', {
-  apiVersion: '2025-02-24.acacia',
-});
+let _stripe: Stripe | null = null;
+
+const getStripe = (): Stripe => {
+  if (!_stripe) {
+    if (!config.stripe.secretKey) {
+      throw new PaymentError('Stripe is not configured. Set STRIPE_SECRET_KEY.');
+    }
+    _stripe = new Stripe(config.stripe.secretKey, {
+      apiVersion: '2025-02-24.acacia',
+    });
+  }
+  return _stripe;
+};
 
 // =============================================================================
 // Stripe Price ID Mapping
@@ -79,10 +89,6 @@ export const createCheckoutSession = async (
     throw new ValidationError('No price configured for this plan and size combination');
   }
 
-  if (!config.stripe.secretKey) {
-    throw new PaymentError('Payment system is not configured');
-  }
-
   const frontendUrl = config.frontendUrl ?? 'http://localhost:5173';
 
   logger.info(
@@ -91,9 +97,8 @@ export const createCheckoutSession = async (
   );
 
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
+    const session = await getStripe().checkout.sessions.create({
+      mode: 'subscription',
       customer_email: email,
       line_items: [
         {
@@ -101,6 +106,13 @@ export const createCheckoutSession = async (
           quantity: 1,
         },
       ],
+      subscription_data: {
+        metadata: {
+          userId,
+          planType,
+          accountSize: String(accountSize),
+        },
+      },
       metadata: {
         userId,
         planType,
@@ -146,7 +158,7 @@ export const handleWebhookEvent = async (
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(
+    event = getStripe().webhooks.constructEvent(
       payload,
       signature,
       config.stripe.webhookSecret
@@ -189,6 +201,13 @@ const handleCheckoutCompleted = async (
 
   const amountPaid = session.amount_total ? session.amount_total / 100 : 0;
 
+  // For subscriptions, use the subscription ID as the payment reference
+  // (payment_intent is null on subscription checkout sessions)
+  const stripePaymentId =
+    (session.subscription as string) ??
+    (session.payment_intent as string) ??
+    session.id;
+
   logger.info(
     {
       sessionId: session.id,
@@ -196,7 +215,7 @@ const handleCheckoutCompleted = async (
       planType,
       accountSize,
       amountPaid,
-      paymentIntentId: session.payment_intent,
+      stripePaymentId,
     },
     'Processing completed checkout'
   );
@@ -206,7 +225,7 @@ const handleCheckoutCompleted = async (
       userId,
       planType,
       accountSize: Number(accountSize),
-      stripePaymentId: (session.payment_intent as string) ?? session.id,
+      stripePaymentId,
       amountPaid,
     });
 
