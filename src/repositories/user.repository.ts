@@ -70,6 +70,13 @@ const safeUserSelect = {
   updatedAt: true,
 } as const satisfies Prisma.UserSelect;
 
+const safeUserWithCountSelect = {
+  ...safeUserSelect,
+  _count: { select: { accounts: true } },
+} as const satisfies Prisma.UserSelect;
+
+export type SafeUserWithCount = SafeUser & { _count: { accounts: number } };
+
 // =============================================================================
 // Queries
 // =============================================================================
@@ -80,7 +87,7 @@ const safeUserSelect = {
 export const getUsers = async (
   filters: UserFilters = {},
   pagination: UserPaginationOptions = { page: 1, limit: 20 }
-): Promise<PaginatedResult<SafeUser>> => {
+): Promise<PaginatedResult<SafeUserWithCount>> => {
   const { page, limit, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
   const skip = (page - 1) * limit;
 
@@ -112,7 +119,7 @@ export const getUsers = async (
       skip,
       take: limit,
       orderBy: { [sortBy]: sortOrder },
-      select: safeUserSelect,
+      select: safeUserWithCountSelect,
     }),
     prisma.user.count({ where }),
   ]);
@@ -120,7 +127,7 @@ export const getUsers = async (
   const totalPages = Math.ceil(total / limit);
 
   return {
-    data: users as SafeUser[],
+    data: users as SafeUserWithCount[],
     pagination: {
       page,
       limit,

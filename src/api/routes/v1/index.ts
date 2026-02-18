@@ -2,6 +2,7 @@ import { Router } from 'express';
 import supportRoutes from './support.js';
 import authRoutes from './auth.js';
 import usersRoutes from './users.js';
+import accountsRoutes from './accounts.js';
 
 // =============================================================================
 // V1 API Routes
@@ -10,7 +11,6 @@ import usersRoutes from './users.js';
 const router = Router();
 
 // TODO: Import and mount route modules as they are implemented
-// import accountsRoutes from './accounts.js';
 // import challengesRoutes from './challenges.js';
 // import payoutsRoutes from './payouts.js';
 // import adminRoutes from './admin.js';
@@ -19,8 +19,8 @@ const router = Router();
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/support', supportRoutes);
+router.use('/accounts', accountsRoutes);
 
-// router.use('/accounts', accountsRoutes);
 // router.use('/challenges', challengesRoutes);
 // router.use('/payouts', payoutsRoutes);
 // router.use('/admin', adminRoutes);
@@ -34,6 +34,7 @@ router.get('/', (_req, res) => {
     endpoints: {
       auth: '/v1/auth',
       users: '/v1/users',
+      accounts: '/v1/accounts',
       support: '/v1/support/tickets',
     },
   });
