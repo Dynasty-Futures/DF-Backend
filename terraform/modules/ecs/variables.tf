@@ -130,6 +130,12 @@ variable "cors_origin" {
   default     = "*"
 }
 
+variable "frontend_url" {
+  description = "Frontend URL for redirects (e.g. Stripe checkout success/cancel URLs)"
+  type        = string
+  default     = "https://www.dynastyfuturesdyn.com"
+}
+
 # -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
