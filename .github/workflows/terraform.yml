@@ -148,6 +148,8 @@ jobs:
     # - TF_VAR_stripe_secret_key: Stripe secret API key (sk_live_...)
     # - TF_VAR_stripe_webhook_secret: Stripe webhook signing secret (whsec_...)
     # - TF_VAR_stripe_publishable_key: Stripe publishable key (pk_live_...)
+    # - TF_VAR_google_client_id: Google OAuth client ID
+    # - TF_VAR_google_client_secret: Google OAuth client secret
     #
     # Go to: Repository Settings -> Secrets and variables -> Actions -> New repository secret
 
@@ -157,9 +159,8 @@ jobs:
       TF_VAR_stripe_secret_key: ${{ secrets.TF_VAR_STRIPE_SECRET_KEY }}
       TF_VAR_stripe_webhook_secret: ${{ secrets.TF_VAR_STRIPE_WEBHOOK_SECRET }}
       TF_VAR_stripe_publishable_key: ${{ secrets.TF_VAR_STRIPE_PUBLISHABLE_KEY }}
-
-    outputs:
-      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+      TF_VAR_google_client_id: ${{ secrets.TF_VAR_GOOGLE_CLIENT_ID }}
+      TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
 
     steps:
       - name: Checkout

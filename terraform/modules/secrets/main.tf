@@ -99,3 +99,35 @@ resource "aws_secretsmanager_secret_version" "stripe_publishable_key" {
   secret_id     = aws_secretsmanager_secret.stripe_publishable_key.id
   secret_string = var.stripe_publishable_key
 }
+
+# -----------------------------------------------------------------------------
+# Google OAuth
+# -----------------------------------------------------------------------------
+
+resource "aws_secretsmanager_secret" "google_client_id" {
+  name        = "${var.project_name}/${var.environment}/app/google-client-id"
+  description = "Google OAuth client ID for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-google-client-id-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "google_client_id" {
+  secret_id     = aws_secretsmanager_secret.google_client_id.id
+  secret_string = var.google_client_id
+}
+
+resource "aws_secretsmanager_secret" "google_client_secret" {
+  name        = "${var.project_name}/${var.environment}/app/google-client-secret"
+  description = "Google OAuth client secret for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-google-client-secret-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "google_client_secret" {
+  secret_id     = aws_secretsmanager_secret.google_client_secret.id
+  secret_string = var.google_client_secret
+}

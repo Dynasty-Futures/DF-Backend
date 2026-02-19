@@ -70,6 +70,16 @@ variable "stripe_publishable_key_arn" {
   type        = string
 }
 
+variable "google_client_id_arn" {
+  description = "ARN of the GOOGLE_CLIENT_ID secret in Secrets Manager"
+  type        = string
+}
+
+variable "google_client_secret_arn" {
+  description = "ARN of the GOOGLE_CLIENT_SECRET secret in Secrets Manager"
+  type        = string
+}
+
 # -----------------------------------------------------------------------------
 # Task Configuration
 # -----------------------------------------------------------------------------

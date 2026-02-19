@@ -252,6 +252,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "STRIPE_SECRET_KEY", valueFrom = var.stripe_secret_key_arn },
         { name = "STRIPE_WEBHOOK_SECRET", valueFrom = var.stripe_webhook_secret_arn },
         { name = "STRIPE_PUBLISHABLE_KEY", valueFrom = var.stripe_publishable_key_arn },
+        { name = "GOOGLE_CLIENT_ID", valueFrom = var.google_client_id_arn },
+        { name = "GOOGLE_CLIENT_SECRET", valueFrom = var.google_client_secret_arn },
       ]
 
       # Health check
