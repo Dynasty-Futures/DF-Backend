@@ -2,6 +2,7 @@ import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { PaymentError } from '../utils/errors.js';
 import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
+import { getTradingPlatformProvider } from '../providers/index.js';
 
 // =============================================================================
 // Challenge Service
@@ -93,6 +94,68 @@ export const provisionAccount = async (
     'Provisioning account after payment'
   );
 
+  // ── Provision on trading platform ──────────────────────────────────────
+  // Ensure the user exists on Volumetrica and create the trading account.
+  // This happens BEFORE the local DB transaction so we have the platform IDs.
+
+  let platformAccountId: string | undefined;
+
+  try {
+    const provider = getTradingPlatformProvider();
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    let platformUserId = user.platformUserId;
+
+    if (!platformUserId) {
+      logger.info({ userId }, 'Creating user on trading platform');
+
+      const platformUser = await provider.createUser({
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        country: 'US', // TODO: pull from user profile once country field is added
+        phone: user.phone ?? undefined,
+        externalId: user.id,
+      });
+      platformUserId = platformUser.platformUserId;
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { platformUserId },
+      });
+
+      logger.info(
+        { userId, platformUserId },
+        'Trading platform user created and linked',
+      );
+    }
+
+    logger.info(
+      { userId, platformUserId, startingBalance },
+      'Creating trading account on platform',
+    );
+
+    const platformAccount = await provider.createAccount({
+      platformUserId,
+      accountName: `${accountTypeName} — ${stripePaymentId.slice(-8)}`,
+      startingBalance,
+    });
+
+    platformAccountId = platformAccount.platformAccountId;
+
+    logger.info(
+      { userId, platformAccountId },
+      'Trading platform account created',
+    );
+  } catch (err) {
+    logger.error(
+      { err, userId, stripePaymentId },
+      'Failed to provision on trading platform — creating local account anyway',
+    );
+  }
+
+  // ── Local DB transaction ────────────────────────────────────────────────
+
   await prisma.$transaction(async (tx) => {
     const account = await tx.account.create({
       data: {
@@ -103,6 +166,7 @@ export const provisionAccount = async (
         currentBalance: startingBalance,
         highWaterMark: startingBalance,
         ...(isDynasty && { fundedAt: new Date() }),
+        ...(platformAccountId && { yourPropFirmId: platformAccountId }),
       },
     });
 
@@ -121,8 +185,8 @@ export const provisionAccount = async (
     });
 
     logger.info(
-      { accountId: account.id, userId },
-      'Account and challenge created successfully'
+      { accountId: account.id, userId, platformAccountId },
+      'Account and challenge created successfully',
     );
   });
 };

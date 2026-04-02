@@ -59,6 +59,7 @@ const safeUserSelect = {
   firstName: true,
   lastName: true,
   phone: true,
+  platformUserId: true,
   role: true,
   status: true,
   kycStatus: true,

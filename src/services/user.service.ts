@@ -1,6 +1,13 @@
 import { UserRole, UserStatus } from '@prisma/client';
+import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-import { NotFoundError, ForbiddenError, ValidationError } from '../utils/errors.js';
+import {
+  NotFoundError,
+  ForbiddenError,
+  ValidationError,
+  ConflictError,
+  PlatformError,
+} from '../utils/errors.js';
 import {
   getUsers,
   getUserById,
@@ -14,6 +21,12 @@ import {
   type UpdateUserProfileData,
 } from '../repositories/user.repository.js';
 import type { SafeUser } from '../repositories/auth.repository.js';
+import { getTradingPlatformProvider } from '../providers/index.js';
+import type {
+  PlatformUserResult,
+  PlatformUserCreateResult,
+  PlatformInviteResult,
+} from '../providers/types.js';
 
 // =============================================================================
 // User Service
@@ -263,4 +276,178 @@ export const deleteUser = async (
  */
 export const getStatistics = async () => {
   return getUserStats();
+};
+
+// =============================================================================
+// Platform User Operations
+// =============================================================================
+
+/**
+ * Create the user on the external trading platform and link the returned
+ * `platformUserId` to the local User row.
+ *
+ * Throws ConflictError if the user is already linked.
+ */
+export const createPlatformUser = async (
+  userId: string,
+): Promise<PlatformUserCreateResult> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+  if (user.platformUserId) {
+    throw new ConflictError('User is already linked to a trading platform');
+  }
+
+  const provider = getTradingPlatformProvider();
+
+  const result = await provider.createUser({
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    country: 'US',
+    phone: user.phone ?? undefined,
+    externalId: user.id,
+  });
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { platformUserId: result.platformUserId },
+  });
+
+  logger.info(
+    { userId, platformUserId: result.platformUserId },
+    'User created on trading platform',
+  );
+
+  return result;
+};
+
+/**
+ * Fetch the user's profile from the external trading platform.
+ */
+export const getPlatformUser = async (
+  userId: string,
+): Promise<PlatformUserResult> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+  if (!user.platformUserId) {
+    throw new PlatformError(
+      'User is not linked to a trading platform',
+      {},
+      400,
+    );
+  }
+
+  const provider = getTradingPlatformProvider();
+  return provider.getUser(user.platformUserId);
+};
+
+/**
+ * Push the local user profile to the trading platform (one-way sync outward).
+ * Useful after a local profile update to keep the platform in sync.
+ */
+export const syncUserToPlatform = async (
+  userId: string,
+): Promise<PlatformUserCreateResult> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+  if (!user.platformUserId) {
+    throw new PlatformError(
+      'User is not linked to a trading platform',
+      {},
+      400,
+    );
+  }
+
+  const provider = getTradingPlatformProvider();
+
+  const result = await provider.updateUser(user.platformUserId, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone ?? undefined,
+  });
+
+  logger.info(
+    { userId, platformUserId: user.platformUserId },
+    'User profile synced to trading platform',
+  );
+
+  return result;
+};
+
+/**
+ * Invite the user to the trading platform organization. Creates a platform
+ * user record and returns an invitation URL that the user must visit to
+ * accept. Also links the `platformUserId` locally.
+ */
+export const invitePlatformUser = async (
+  userId: string,
+): Promise<PlatformInviteResult> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+  if (user.platformUserId) {
+    throw new ConflictError('User is already linked to a trading platform');
+  }
+
+  const provider = getTradingPlatformProvider();
+
+  const result = await provider.inviteUser({
+    country: 'US',
+    email: user.email,
+    externalId: user.id,
+  });
+
+  if (result.platformUserId) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { platformUserId: result.platformUserId },
+    });
+  }
+
+  logger.info(
+    { userId, platformUserId: result.platformUserId, status: result.status },
+    'User invited to trading platform',
+  );
+
+  return result;
+};
+
+/**
+ * Unlink a user from the trading platform by clearing platformUserId.
+ * Does NOT delete the user on the platform side.
+ */
+export const unlinkPlatformUser = async (
+  userId: string,
+  adminId: string,
+): Promise<void> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+  });
+  if (!user) throw new NotFoundError(`User ${userId} not found`);
+
+  if (!user.platformUserId) {
+    throw new ValidationError('User is not linked to a trading platform');
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { platformUserId: null },
+  });
+
+  logger.info(
+    { userId, adminId, previousPlatformUserId: user.platformUserId },
+    'User unlinked from trading platform',
+  );
 };

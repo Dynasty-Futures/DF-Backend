@@ -353,4 +353,147 @@ router.delete(
   }
 );
 
+// =============================================================================
+// Platform User Routes — /users/:id/platform
+// =============================================================================
+
+/**
+ * POST /users/:id/platform
+ * Create the user on the external trading platform and link them.
+ * Admin-only — used during account provisioning or manual setup.
+ */
+router.post(
+  '/:id/platform',
+  requireRole(UserRole.ADMIN),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const targetId = req.params['id'] as string;
+      const result = await userService.createPlatformUser(targetId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'User created on trading platform',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /users/:id/platform
+ * Fetch the user's profile from the trading platform.
+ * - Admins can view any user's platform profile.
+ * - Non-admins can only view their own.
+ */
+router.get(
+  '/:id/platform',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const targetId = req.params['id'] as string;
+      const requesterId = req.user?.id;
+      const requesterRole = req.user?.role;
+
+      if (!requesterId || !requesterRole) {
+        next(new ValidationError('User context missing'));
+        return;
+      }
+
+      if (requesterRole !== UserRole.ADMIN && targetId !== requesterId) {
+        next(new ValidationError('You can only view your own platform profile'));
+        return;
+      }
+
+      const platformUser = await userService.getPlatformUser(targetId);
+
+      res.json({
+        success: true,
+        data: platformUser,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /users/:id/platform/sync
+ * Push the local user profile to the trading platform.
+ * Admin-only — keeps the platform in sync after local edits.
+ */
+router.post(
+  '/:id/platform/sync',
+  requireRole(UserRole.ADMIN),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const targetId = req.params['id'] as string;
+      const result = await userService.syncUserToPlatform(targetId);
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'User profile synced to trading platform',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /users/:id/platform/invite
+ * Invite the user to the trading platform organization.
+ * Returns an invitation URL the user must visit to accept.
+ * Admin-only.
+ */
+router.post(
+  '/:id/platform/invite',
+  requireRole(UserRole.ADMIN),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const targetId = req.params['id'] as string;
+      const result = await userService.invitePlatformUser(targetId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'User invited to trading platform',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /users/:id/platform
+ * Unlink the user from the trading platform (clears platformUserId locally).
+ * Does NOT delete the user on the platform. Admin-only.
+ */
+router.delete(
+  '/:id/platform',
+  requireRole(UserRole.ADMIN),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const targetId = req.params['id'] as string;
+      const adminId = req.user?.id;
+
+      if (!adminId) {
+        next(new ValidationError('User context missing'));
+        return;
+      }
+
+      await userService.unlinkPlatformUser(targetId, adminId);
+
+      res.json({
+        success: true,
+        message: 'User unlinked from trading platform',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

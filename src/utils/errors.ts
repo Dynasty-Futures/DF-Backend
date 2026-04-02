@@ -232,6 +232,19 @@ export class PaymentError extends AppError {
   }
 }
 
+/**
+ * External trading platform error (Volumetrica, etc.)
+ */
+export class PlatformError extends AppError {
+  constructor(
+    message = 'Trading platform error',
+    details?: ErrorDetails,
+    statusCode = 502
+  ) {
+    super(message, 'PLATFORM_ERROR', statusCode, true, details);
+  }
+}
+
 // =============================================================================
 // Error Type Guards
 // =============================================================================

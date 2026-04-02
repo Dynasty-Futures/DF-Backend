@@ -4,6 +4,7 @@ import authRoutes from './auth.js';
 import usersRoutes from './users.js';
 import accountsRoutes from './accounts.js';
 import checkoutRoutes from './checkout.js';
+import tradingRoutes from './trading.js';
 
 // =============================================================================
 // V1 API Routes
@@ -22,6 +23,7 @@ router.use('/users', usersRoutes);
 router.use('/support', supportRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/checkout', checkoutRoutes);
+router.use('/trading', tradingRoutes);
 
 // router.use('/challenges', challengesRoutes);
 // router.use('/payouts', payoutsRoutes);
@@ -37,6 +39,7 @@ router.get('/', (_req, res) => {
       auth: '/v1/auth',
       users: '/v1/users',
       accounts: '/v1/accounts',
+      trading: '/v1/trading',
       support: '/v1/support/tickets',
     },
   });

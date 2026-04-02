@@ -263,6 +263,7 @@ export const login = async (input: LoginInput): Promise<AuthResult> => {
     firstName: user.firstName,
     lastName: user.lastName,
     phone: user.phone,
+    platformUserId: user.platformUserId,
     role: user.role,
     status: user.status,
     kycStatus: user.kycStatus,
