@@ -33,6 +33,11 @@ interface VolumetricaEnvelope<T> {
   data: T;
 }
 
+/** Paginated responses include a nextPageToken alongside the envelope. */
+interface VolumetricaPagedEnvelope<T> extends VolumetricaEnvelope<T> {
+  nextPageToken?: string | null;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class VolumetricaClient {
@@ -77,6 +82,14 @@ export class VolumetricaClient {
     return this.request<T>({ method: 'DELETE', path });
   }
 
+  /** GET with pagination — returns { data, nextPageToken } without losing the token. */
+  async getPaged<T = unknown>(
+    path: string,
+    query?: VolumetricaRequestOptions['query'],
+  ): Promise<{ data: T; nextPageToken?: string | undefined }> {
+    return this.requestPaged<T>({ method: 'GET', path, query });
+  }
+
   // ── Internal ────────────────────────────────────────────────────────────
 
   private async request<T>(opts: VolumetricaRequestOptions): Promise<T> {
@@ -107,6 +120,76 @@ export class VolumetricaClient {
           }
 
           return json as T;
+        }
+
+        const errorBody = await this.safeParseJson<VolumetricaErrorBody>(res);
+
+        if (res.status >= 500 && attempt < MAX_RETRIES) {
+          logger.warn(
+            { status: res.status, attempt, path: opts.path },
+            'Volumetrica server error — retrying',
+          );
+          await sleep(RETRY_DELAY_MS * (attempt + 1));
+          continue;
+        }
+
+        throw this.mapError(res.status, errorBody, opts);
+      } catch (error) {
+        if (error instanceof PlatformError) throw error;
+
+        if (attempt < MAX_RETRIES) {
+          logger.warn(
+            { err: error, attempt, path: opts.path },
+            'Volumetrica request failed — retrying',
+          );
+          await sleep(RETRY_DELAY_MS * (attempt + 1));
+          continue;
+        }
+
+        throw new ServiceUnavailableError(
+          `Volumetrica API unreachable: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    throw new ServiceUnavailableError('Volumetrica API: max retries exceeded');
+  }
+
+  /**
+   * Like request(), but preserves `nextPageToken` from the paginated envelope.
+   * Returns `{ data: T, nextPageToken?: string }`.
+   */
+  private async requestPaged<T>(
+    opts: VolumetricaRequestOptions,
+  ): Promise<{ data: T; nextPageToken?: string | undefined }> {
+    const url = this.buildUrl(opts.path, opts.query);
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await this.doFetch(url, opts);
+
+        if (res.ok) {
+          if (res.status === 204) return { data: undefined as T };
+          const json = (await res.json()) as VolumetricaPagedEnvelope<T>;
+
+          if (
+            json !== null &&
+            typeof json === 'object' &&
+            'success' in json &&
+            'data' in json
+          ) {
+            if (!json.success) {
+              throw new PlatformError('Volumetrica returned success=false', {
+                platformPath: opts.path,
+              });
+            }
+            return {
+              data: json.data,
+              nextPageToken: json.nextPageToken ?? undefined,
+            };
+          }
+
+          return { data: json as unknown as T };
         }
 
         const errorBody = await this.safeParseJson<VolumetricaErrorBody>(res);

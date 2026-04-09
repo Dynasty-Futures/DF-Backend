@@ -13,6 +13,7 @@ module.exports = {
     ],
   },
   moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@api/(.*)$': '<rootDir>/src/api/$1',
     '^@services/(.*)$': '<rootDir>/src/services/$1',

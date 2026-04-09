@@ -312,6 +312,9 @@ model ChallengeRule {
   newsRestriction       Boolean @default(true) @map("news_restriction")
   weekendRestriction    Boolean @default(true) @map("weekend_restriction")
 
+  // Platform integration
+  platformRuleId        String? @map("platform_rule_id") // Volumetrica TradingRule ID
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

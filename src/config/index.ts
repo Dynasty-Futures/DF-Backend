@@ -38,6 +38,7 @@ const envSchema = z.object({
   TRADING_PLATFORM: z.enum(['volumetrica']).default('volumetrica'),
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
+  VOLUMETRICA_WEBHOOK_SECRET: z.string().optional(),
 
   // Google OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -133,6 +134,7 @@ export const config = {
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,
     apiKey: env.VOLUMETRICA_API_KEY,
+    webhookSecret: env.VOLUMETRICA_WEBHOOK_SECRET,
   },
 
   // Google OAuth
