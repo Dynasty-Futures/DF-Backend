@@ -177,3 +177,212 @@ export type IFrameType =
   | 'userGoal'
   | 'economicCalendar'
   | 'webApp';
+
+// ── Trading Rules ──────────────────────────────────────────────────────────
+
+export interface CreatePlatformTradingRuleParams {
+  name: string;
+  description?: string | undefined;
+  /** Our idempotency key — maps to organizationReferenceId on the platform */
+  organizationReferenceId?: string | undefined;
+  maxDrawdownMoney: number;
+  /** 0 = trailing (high-water mark), 1 = static (starting balance) */
+  maxDrawdownMode: number;
+  /** 1 = ChallengeFail */
+  maxDrawdownAction: number;
+  intradayMaxDrawdownMoney: number;
+  /** 1 = ChallengeFail */
+  intradayMaxDrawdownAction: number;
+  profitTargetMoney?: number | undefined;
+  /** 1 = ChallengeSuccess, 0 = None */
+  profitTargetAction?: number | undefined;
+  consistencyPercentual?: number | undefined;
+  minSessionNumbers?: number | undefined;
+  /** 0 = None, 2 = Liquidate, 4 = IntradayDisable */
+  newsRestrictionAction?: number | undefined;
+  /** 0 = None, 2 = Liquidate, 4 = IntradayDisable */
+  overweekendAction?: number | undefined;
+}
+
+export interface PlatformTradingRuleResult {
+  tradingRuleId: string;
+  name: string;
+  organizationReferenceId?: string | undefined;
+}
+
+// ── Paginated Response ─────────────────────────────────────────────────────
+
+/** Wrapper for endpoints that support cursor-based pagination */
+export interface PaginatedResult<T> {
+  data: T;
+  nextPageToken?: string | undefined;
+}
+
+// ── Bulk Operations ────────────────────────────────────────────────────────
+
+/** Account header returned by bulk account listing endpoints */
+export interface PlatformAccountHeader {
+  platformAccountId: string;
+  displayId?: string | undefined;
+  name?: string | undefined;
+  description?: string | undefined;
+  currency: string;
+  startingBalance: number;
+  balance: number;
+  maxBalance: number;
+  minBalance: number;
+  sessionCount: number;
+  enabled: boolean;
+  mode: string;
+  status: string;
+  tradingPermission: string;
+  visibility: string;
+  createdAt: Date;
+  disabledAt?: Date | undefined;
+  endAt?: Date | undefined;
+  tradingRuleId?: string | undefined;
+  accountFamilyId?: string | undefined;
+  reason?: string | undefined;
+  owner?: PlatformAccountOwner | undefined;
+}
+
+export interface PlatformAccountOwner {
+  platformUserId?: string | undefined;
+  fullName?: string | undefined;
+  username?: string | undefined;
+  email?: string | undefined;
+  externalId?: string | undefined;
+}
+
+/** Real-time account info/snapshot returned by bulk info endpoints */
+export interface PlatformAccountInfo {
+  status: string;
+  tradingPermission: string;
+  reason?: string | undefined;
+  reasonTradingPermission?: string | undefined;
+  riskPauseRestoreUtcMs?: number | undefined;
+  tradingRuleId?: string | undefined;
+  snapshot: PlatformAccountLiveSnapshot;
+}
+
+/** Real-time snapshot of account balances and risk metrics */
+export interface PlatformAccountLiveSnapshot {
+  platformAccountId: string;
+  currency: string;
+  startBalance: number;
+  balance: number;
+  equity?: number | undefined;
+  marginAvailable: number;
+  marginUsed: number;
+  minBalance: number;
+  maxBalance: number;
+  dailyPnl: number;
+  dailyNetPnl: number;
+  intradayStartBalance: number;
+  intradayMinBalance: number;
+  intradayMaxBalance: number;
+  intradayNumberOfTrades: number;
+  stopDrawdownBalance?: number | undefined;
+  stopDrawdownIntradayBalance?: number | undefined;
+  profitTargetBalance?: number | undefined;
+  updatedAt: Date;
+}
+
+/** Bulk trade result — keyed by account ID */
+export interface PlatformBulkTrade {
+  tradeId: number;
+  symbolName?: string | undefined;
+  contractName?: string | undefined;
+  entryDate: number;
+  exitDate: number;
+  entrySessionDate: string;
+  exitSessionDate: string;
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number;
+  grossPnl: number;
+  netPnl: number;
+  convertedGrossPnl: number;
+  convertedNetPnl: number;
+  overnight: boolean;
+  overweekend: boolean;
+  isCloseTrade: boolean;
+  maxDrawdown?: number | undefined;
+  maxRunup?: number | undefined;
+  currency?: string | undefined;
+}
+
+/** Bulk fill result — keyed by account ID */
+export interface PlatformBulkFill {
+  fillId: number;
+  contractId: number;
+  symbolName?: string | undefined;
+  executedAt: Date;
+  sessionDate: string;
+  price: number;
+  quantity: number;
+  commissions: number;
+}
+
+/** Bulk order result — keyed by account ID */
+export interface PlatformBulkOrder {
+  orderId: number;
+  contractId: number;
+  symbolName?: string | undefined;
+  status: string;
+  orderType: string;
+  insertedAt: Date;
+  executedAt?: Date | undefined;
+  cancelledAt?: Date | undefined;
+  insertPrice: number;
+  executePrice?: number | undefined;
+  totalQuantity: number;
+  filledQuantity: number;
+  modified: boolean;
+  source: string;
+  reason: string;
+}
+
+/** Bulk transaction result — keyed by account ID */
+export interface PlatformBulkTransaction {
+  transactionId: number;
+  accountId: number;
+  occurredAt: Date;
+  type: string;
+  description?: string | undefined;
+  amount: number;
+}
+
+/** Bulk daily snapshot — keyed by account ID */
+export interface PlatformBulkDailySnapshot {
+  platformAccountId: number;
+  currency: string;
+  startBalance: number;
+  balance: number;
+  equity?: number | undefined;
+  marginAvailable: number;
+  marginUsed: number;
+  minBalance: number;
+  maxBalance: number;
+  intradayStartBalance: number;
+  intradayMinBalance: number;
+  intradayMaxBalance: number;
+  intradayNumberOfTrades: number;
+  dailyPnl: number;
+  dailyNetPnl: number;
+  stopDrawdownBalance?: number | undefined;
+  stopDrawdownIntradayBalance?: number | undefined;
+  profitTargetBalance?: number | undefined;
+  updatedAt: Date;
+  snapshotDate: Date;
+}
+
+/** Bulk session log entry */
+export interface PlatformSessionLog {
+  sessionId: number;
+  appUserId?: string | undefined;
+  startedAt: Date;
+  endedAt?: Date | undefined;
+  platform?: string | undefined;
+  ip?: string | undefined;
+}

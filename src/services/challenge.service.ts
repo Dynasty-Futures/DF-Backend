@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { PaymentError } from '../utils/errors.js';
 import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
 import { getTradingPlatformProvider } from '../providers/index.js';
+import { mapChallengeRuleToTradingParams, findOrCreateTradingRule } from './rule-mapping.service.js';
 
 // =============================================================================
 // Challenge Service
@@ -147,6 +148,45 @@ export const provisionAccount = async (
       { userId, platformAccountId },
       'Trading platform account created',
     );
+
+    // ── Assign trading rule to platform account ───────────────────────────
+    if (platformAccountId && phaseRules) {
+      try {
+        let tradingRuleId = phaseRules.platformRuleId;
+
+        if (!tradingRuleId) {
+          const ruleParams = mapChallengeRuleToTradingParams(
+            phaseRules,
+            startingBalance,
+            accountTypeName,
+          );
+          tradingRuleId = await findOrCreateTradingRule(provider, ruleParams);
+
+          // Cache the platform rule ID for future provisioning
+          await prisma.challengeRule.update({
+            where: { id: phaseRules.id },
+            data: { platformRuleId: tradingRuleId },
+          });
+
+          logger.info(
+            { challengeRuleId: phaseRules.id, tradingRuleId },
+            'Cached platformRuleId on ChallengeRule',
+          );
+        }
+
+        await provider.assignTradingRule(platformAccountId, tradingRuleId);
+
+        logger.info(
+          { platformAccountId, tradingRuleId },
+          'Trading rule assigned to platform account',
+        );
+      } catch (ruleErr) {
+        logger.error(
+          { err: ruleErr, platformAccountId },
+          'Failed to assign trading rule — account created but rule not applied',
+        );
+      }
+    }
   } catch (err) {
     logger.error(
       { err, userId, stripePaymentId },

@@ -3,6 +3,7 @@ import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { connectDatabase, disconnectDatabase } from './utils/database.js';
 import { connectRedis, disconnectRedis } from './utils/redis.js';
+import { startBackgroundJobs } from './jobs/index.js';
 
 // =============================================================================
 // Main Entry Point
@@ -24,6 +25,9 @@ const startServer = async (): Promise<void> => {
       logger.info(`Environment: ${config.env}`);
       logger.info(`Health check: http://${config.host}:${config.port}/health`);
       logger.info(`API v1: http://${config.host}:${config.port}/v1`);
+
+      // Start background jobs after server is listening
+      startBackgroundJobs();
     });
 
     // ==========================================================================
