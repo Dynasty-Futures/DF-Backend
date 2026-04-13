@@ -80,6 +80,21 @@ variable "google_client_secret_arn" {
   type        = string
 }
 
+variable "volumetrica_api_url_arn" {
+  description = "ARN of the VOLUMETRICA_API_URL secret in Secrets Manager"
+  type        = string
+}
+
+variable "volumetrica_api_key_arn" {
+  description = "ARN of the VOLUMETRICA_API_KEY secret in Secrets Manager"
+  type        = string
+}
+
+variable "volumetrica_webhook_secret_arn" {
+  description = "ARN of the VOLUMETRICA_WEBHOOK_SECRET secret in Secrets Manager"
+  type        = string
+}
+
 # -----------------------------------------------------------------------------
 # Task Configuration
 # -----------------------------------------------------------------------------

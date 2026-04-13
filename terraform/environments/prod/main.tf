@@ -123,6 +123,11 @@ module "secrets" {
   # Google OAuth
   google_client_id     = var.google_client_id
   google_client_secret = var.google_client_secret
+
+  # Volumetrica
+  volumetrica_api_url        = var.volumetrica_api_url
+  volumetrica_api_key        = var.volumetrica_api_key
+  volumetrica_webhook_secret = var.volumetrica_webhook_secret
 }
 
 # -----------------------------------------------------------------------------
@@ -201,8 +206,11 @@ module "ecs" {
   stripe_secret_key_arn      = module.secrets.stripe_secret_key_arn
   stripe_webhook_secret_arn  = module.secrets.stripe_webhook_secret_arn
   stripe_publishable_key_arn = module.secrets.stripe_publishable_key_arn
-  google_client_id_arn       = module.secrets.google_client_id_arn
-  google_client_secret_arn   = module.secrets.google_client_secret_arn
+  google_client_id_arn            = module.secrets.google_client_id_arn
+  google_client_secret_arn        = module.secrets.google_client_secret_arn
+  volumetrica_api_url_arn         = module.secrets.volumetrica_api_url_arn
+  volumetrica_api_key_arn         = module.secrets.volumetrica_api_key_arn
+  volumetrica_webhook_secret_arn  = module.secrets.volumetrica_webhook_secret_arn
 
   # Task sizing
   cpu           = var.ecs_api_cpu

@@ -386,3 +386,77 @@ export interface PlatformSessionLog {
   platform?: string | undefined;
   ip?: string | undefined;
 }
+
+// ── Account Management Enums ──────────────────────────────────────────────
+
+export type AccountStatus = 'Initialized' | 'Enabled' | 'ChallengeSuccess' | 'ChallengeFailed' | 'Disabled';
+export type TradingPermission = 'Trading' | 'ReadOnly' | 'RiskPause' | 'LiquidateOnly';
+export type AccountVisibility = 'Default' | 'Hidden' | 'Visible';
+export type BalanceUpdateAction = 'Add' | 'Subtract' | 'Set' | 'Withdraw' | 'Deposit' | 'InternalUpdate';
+export type OrderFilterStatus = 'Cancelled' | 'Working' | 'Filled' | 'Rejected';
+export type RuleReference = 'Application' | 'Organization' | 'OrganizationOwner';
+
+// ── Account Management Params ─────────────────────────────────────────────
+
+export interface ListAccountsByRuleParams {
+  ruleId: string;
+  includeDisabled?: boolean | undefined;
+}
+
+export interface ChangeAccountStatusParams {
+  accountId: string;
+  status?: AccountStatus | undefined;
+  tradingPermission?: TradingPermission | undefined;
+  reason?: string | undefined;
+  forceClose?: boolean | undefined;
+}
+
+export interface ChangeAccountPermissionParams {
+  accountId: string;
+  tradingPermission: TradingPermission;
+  forceClose?: boolean | undefined;
+  reason?: string | undefined;
+}
+
+export interface ChangeAccountVisibilityParams {
+  accountId: string;
+  visibility?: AccountVisibility | undefined;
+}
+
+export interface UpdateAccountBalanceParams {
+  accountId: string;
+  action?: BalanceUpdateAction | undefined;
+  value?: number | undefined;
+  moveDrawdownToThresholdLimit?: boolean | undefined;
+}
+
+export interface ChangeAccountScheduleParams {
+  accountId: string;
+  startDate?: Date | undefined;
+  endDate?: Date | undefined;
+}
+
+export interface BulkEnableAccountsParams {
+  ruleReference?: RuleReference | undefined;
+  ruleId?: string | undefined;
+  tradingPermission?: TradingPermission | undefined;
+  visibility?: AccountVisibility | undefined;
+}
+
+export interface BulkDisableAccountsParams {
+  ruleReference?: RuleReference | undefined;
+  ruleId?: string | undefined;
+  reason?: string | undefined;
+  forceClose?: boolean | undefined;
+  visibility?: AccountVisibility | undefined;
+}
+
+// ── Account Management Results ────────────────────────────────────────────
+
+/** Result of a bulk enable/disable operation */
+export interface PlatformBulkEnableDisableResult {
+  platformAccountId: string;
+  success: boolean;
+  errorMessage?: string | undefined;
+  errorCode?: number | undefined;
+}

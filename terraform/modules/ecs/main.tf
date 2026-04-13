@@ -255,6 +255,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "STRIPE_PUBLISHABLE_KEY", valueFrom = var.stripe_publishable_key_arn },
         { name = "GOOGLE_CLIENT_ID", valueFrom = var.google_client_id_arn },
         { name = "GOOGLE_CLIENT_SECRET", valueFrom = var.google_client_secret_arn },
+        { name = "VOLUMETRICA_API_URL", valueFrom = var.volumetrica_api_url_arn },
+        { name = "VOLUMETRICA_API_KEY", valueFrom = var.volumetrica_api_key_arn },
+        { name = "VOLUMETRICA_WEBHOOK_SECRET", valueFrom = var.volumetrica_webhook_secret_arn },
       ]
 
       # Health check

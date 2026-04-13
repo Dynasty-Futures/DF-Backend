@@ -30,6 +30,16 @@ import type {
   PlatformSessionLog,
   CreatePlatformTradingRuleParams,
   PlatformTradingRuleResult,
+  ListAccountsByRuleParams,
+  ChangeAccountStatusParams,
+  ChangeAccountPermissionParams,
+  ChangeAccountVisibilityParams,
+  UpdateAccountBalanceParams,
+  ChangeAccountScheduleParams,
+  BulkEnableAccountsParams,
+  BulkDisableAccountsParams,
+  PlatformBulkEnableDisableResult,
+  OrderFilterStatus,
 } from './types.js';
 
 export interface TradingPlatformProvider {
@@ -114,6 +124,50 @@ export interface TradingPlatformProvider {
     platformAccountId: string,
     tradingRuleId: string,
   ): Promise<void>;
+
+  // ── Account Management ──────────────────────────────────────────────
+
+  /** List accounts associated with a trading rule. */
+  listAccountsByRule(params: ListAccountsByRuleParams): Promise<PlatformAccountHeader[]>;
+
+  /** Get historical orders for a single account. */
+  getHistoricalOrders(
+    accountId: string,
+    startDt: Date,
+    endDt?: Date | undefined,
+    filterStatus?: OrderFilterStatus | undefined,
+  ): Promise<PlatformBulkOrder[]>;
+
+  /** Get historical transactions for a single account. */
+  getHistoricalTransactions(
+    accountId: string,
+    startDt: Date,
+    endDt?: Date | undefined,
+  ): Promise<PlatformBulkTransaction[]>;
+
+  /** Get IDs of all currently enabled accounts. */
+  getEnabledAccountIds(): Promise<string[]>;
+
+  /** Bulk enable accounts matching criteria. */
+  bulkEnableAccounts(params: BulkEnableAccountsParams): Promise<PlatformBulkEnableDisableResult[]>;
+
+  /** Bulk disable accounts matching criteria. */
+  bulkDisableAccounts(params: BulkDisableAccountsParams): Promise<PlatformBulkEnableDisableResult[]>;
+
+  /** Change account status (enable/disable/challenge state). */
+  changeAccountStatus(params: ChangeAccountStatusParams): Promise<PlatformAccountHeader>;
+
+  /** Change account trading permission. */
+  changeAccountPermission(params: ChangeAccountPermissionParams): Promise<PlatformAccountHeader>;
+
+  /** Change account visibility. */
+  changeAccountVisibility(params: ChangeAccountVisibilityParams): Promise<PlatformAccountHeader>;
+
+  /** Update account balance (add/subtract/set/deposit/withdraw). */
+  updateAccountBalance(params: UpdateAccountBalanceParams): Promise<void>;
+
+  /** Change account schedule (start/end dates). */
+  changeAccountSchedule(params: ChangeAccountScheduleParams): Promise<PlatformAccountHeader>;
 
   // ── Bulk Operations ──────────────────────────────────────────────────
 

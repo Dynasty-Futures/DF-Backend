@@ -35,6 +35,15 @@ import type {
   PlatformSessionLog,
   CreatePlatformTradingRuleParams,
   PlatformTradingRuleResult,
+  ListAccountsByRuleParams,
+  ChangeAccountStatusParams,
+  ChangeAccountPermissionParams,
+  ChangeAccountVisibilityParams,
+  UpdateAccountBalanceParams,
+  ChangeAccountScheduleParams,
+  BulkEnableAccountsParams,
+  BulkDisableAccountsParams,
+  PlatformBulkEnableDisableResult,
 } from '../types.js';
 import { VolumetricaClient } from './volumetrica.client.js';
 import { logger } from '../../utils/logger.js';
@@ -313,6 +322,14 @@ interface VolSessionLog {
   ip: string | null;
 }
 
+/** Response item from EnableBulk / DisableBulk */
+interface VolBulkEnableDisableResult {
+  accountId: string | null;
+  success: boolean;
+  errorMessage: string | null;
+  errorCode: number;
+}
+
 // ── Enum maps ─────────────────────────────────────────────────────────────
 
 const ACCOUNT_STATUS_MAP: Record<number, string> = {
@@ -341,8 +358,9 @@ const TRADING_PERMISSION_MAP: Record<number, string> = {
 };
 
 const VISIBILITY_MAP: Record<number, string> = {
-  0: 'Visible',
+  0: 'Default',
   1: 'Hidden',
+  2: 'Visible',
 };
 
 const CURRENCY_MAP: Record<number, string> = {
@@ -390,6 +408,32 @@ const TRANSACTION_TYPE_MAP: Record<number, string> = {
 
 const PLATFORM_MAP: Record<number, string> = {
   0: 'VOLUMETRICA_TRADING', 1: 'QUANTOWER', 2: 'ATAS',
+};
+
+// ── Reverse enum maps (platform-agnostic string → Volumetrica numeric) ────
+
+const REVERSE_ACCOUNT_STATUS: Record<string, number> = {
+  Initialized: 0, Enabled: 1, ChallengeSuccess: 2, ChallengeFailed: 4, Disabled: 8,
+};
+
+const REVERSE_TRADING_PERMISSION: Record<string, number> = {
+  Trading: 0, ReadOnly: 1, RiskPause: 2, LiquidateOnly: 3,
+};
+
+const REVERSE_VISIBILITY: Record<string, number> = {
+  Default: 0, Hidden: 1, Visible: 2,
+};
+
+const REVERSE_BALANCE_ACTION: Record<string, number> = {
+  Add: 0, Subtract: 1, Set: 2, Withdraw: 3, Deposit: 4, InternalUpdate: 5,
+};
+
+const REVERSE_ORDER_FILTER_STATUS: Record<string, number> = {
+  Cancelled: 0, Working: 1, Filled: 2, Rejected: 3,
+};
+
+const REVERSE_RULE_REFERENCE: Record<string, number> = {
+  Application: 0, Organization: 1, OrganizationOwner: 2,
 };
 
 // ── Volumetrica TradingRule response shapes ─────────────────────────────────
@@ -1029,6 +1073,172 @@ export class VolumetricaProvider implements TradingPlatformProvider {
     return { data: mapped, nextPageToken: res.nextPageToken };
   }
 
+  // ── Account Management ──────────────────────────────────────────────
+
+  async listAccountsByRule(params: ListAccountsByRuleParams): Promise<PlatformAccountHeader[]> {
+    logger.info({ ruleId: params.ruleId }, 'Volumetrica: listing accounts by rule');
+    const accounts = await this.client.get<VolAccountHeader[]>(
+      `${API}/TradingAccount/ListByRuleId`,
+      {
+        ruleId: params.ruleId,
+        ...(params.includeDisabled !== undefined && { includeDisabled: params.includeDisabled }),
+      },
+    );
+    return accounts.map((a) => this.mapAccountHeader(a));
+  }
+
+  async getHistoricalOrders(
+    accountId: string,
+    startDt: Date,
+    endDt?: Date,
+    filterStatus?: string,
+  ): Promise<PlatformBulkOrder[]> {
+    logger.info({ accountId }, 'Volumetrica: fetching historical orders');
+    const orders = await this.client.get<VolBulkOrder[]>(
+      `${API}/TradingAccount/HistoricalOrders`,
+      {
+        accountId,
+        startDt: startDt.toISOString(),
+        ...(endDt && { endDt: endDt.toISOString() }),
+        ...(filterStatus && { filterStatus: REVERSE_ORDER_FILTER_STATUS[filterStatus] }),
+      },
+    );
+    return orders.map((o) => this.mapBulkOrder(o));
+  }
+
+  async getHistoricalTransactions(
+    accountId: string,
+    startDt: Date,
+    endDt?: Date,
+  ): Promise<PlatformBulkTransaction[]> {
+    logger.info({ accountId }, 'Volumetrica: fetching historical transactions');
+    const txns = await this.client.get<VolBulkTransaction[]>(
+      `${API}/TradingAccount/HistoricalTransactions`,
+      {
+        accountId,
+        startDt: startDt.toISOString(),
+        ...(endDt && { endDt: endDt.toISOString() }),
+      },
+    );
+    return txns.map((t) => this.mapBulkTransaction(t));
+  }
+
+  async getEnabledAccountIds(): Promise<string[]> {
+    logger.info('Volumetrica: fetching enabled account IDs');
+    return this.client.get<string[]>(`${API}/TradingAccount/EnabledAccountsId`);
+  }
+
+  async bulkEnableAccounts(
+    params: BulkEnableAccountsParams,
+  ): Promise<PlatformBulkEnableDisableResult[]> {
+    logger.info('Volumetrica: bulk enabling accounts');
+    const results = await this.client.post<VolBulkEnableDisableResult[]>(
+      `${API}/TradingAccount/EnableBulk`,
+      {
+        ...(params.ruleReference && {
+          tradingRuleReference: REVERSE_RULE_REFERENCE[params.ruleReference],
+        }),
+        ...(params.ruleId && { ruleId: params.ruleId }),
+        ...(params.tradingPermission && {
+          tradingPermission: REVERSE_TRADING_PERMISSION[params.tradingPermission],
+        }),
+        ...(params.visibility && { visibility: REVERSE_VISIBILITY[params.visibility] }),
+      },
+    );
+    return results.map((r) => this.mapBulkEnableDisableResult(r));
+  }
+
+  async bulkDisableAccounts(
+    params: BulkDisableAccountsParams,
+  ): Promise<PlatformBulkEnableDisableResult[]> {
+    logger.info('Volumetrica: bulk disabling accounts');
+    const results = await this.client.post<VolBulkEnableDisableResult[]>(
+      `${API}/TradingAccount/DisableBulk`,
+      {
+        ...(params.ruleReference && {
+          tradingRuleReference: REVERSE_RULE_REFERENCE[params.ruleReference],
+        }),
+        ...(params.ruleId && { ruleId: params.ruleId }),
+        ...(params.reason && { reason: params.reason }),
+        ...(params.forceClose !== undefined && { forceClose: params.forceClose }),
+        ...(params.visibility && { visibility: REVERSE_VISIBILITY[params.visibility] }),
+      },
+    );
+    return results.map((r) => this.mapBulkEnableDisableResult(r));
+  }
+
+  async changeAccountStatus(params: ChangeAccountStatusParams): Promise<PlatformAccountHeader> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: changing account status');
+    const result = await this.client.post<VolAccountHeader>(
+      `${API}/TradingAccount/ChangeStatus`,
+      {
+        accountId: params.accountId,
+        ...(params.status && { status: REVERSE_ACCOUNT_STATUS[params.status] }),
+        ...(params.tradingPermission && {
+          tradingPermission: REVERSE_TRADING_PERMISSION[params.tradingPermission],
+        }),
+        ...(params.reason && { reason: params.reason }),
+        ...(params.forceClose !== undefined && { forceClose: params.forceClose }),
+      },
+    );
+    return this.mapAccountHeader(result);
+  }
+
+  async changeAccountPermission(
+    params: ChangeAccountPermissionParams,
+  ): Promise<PlatformAccountHeader> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: changing account permission');
+    const result = await this.client.post<VolAccountHeader>(
+      `${API}/TradingAccount/ChangePermission`,
+      {
+        accountId: params.accountId,
+        tradingPermission: REVERSE_TRADING_PERMISSION[params.tradingPermission],
+        ...(params.forceClose !== undefined && { forceClose: params.forceClose }),
+        ...(params.reason && { reason: params.reason }),
+      },
+    );
+    return this.mapAccountHeader(result);
+  }
+
+  async changeAccountVisibility(
+    params: ChangeAccountVisibilityParams,
+  ): Promise<PlatformAccountHeader> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: changing account visibility');
+    const result = await this.client.post<VolAccountHeader>(
+      `${API}/TradingAccount/ChangeVisibility`,
+      {
+        accountId: params.accountId,
+        ...(params.visibility && { visibility: REVERSE_VISIBILITY[params.visibility] }),
+      },
+    );
+    return this.mapAccountHeader(result);
+  }
+
+  async updateAccountBalance(params: UpdateAccountBalanceParams): Promise<void> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: updating account balance');
+    await this.client.post(`${API}/TradingAccount/UpdateBalance`, {
+      accountId: params.accountId,
+      ...(params.action && { action: REVERSE_BALANCE_ACTION[params.action] }),
+      ...(params.value !== undefined && { value: params.value }),
+      ...(params.moveDrawdownToThresholdLimit !== undefined && {
+        moveDrawdownToThresholdLimit: params.moveDrawdownToThresholdLimit,
+      }),
+    });
+  }
+
+  async changeAccountSchedule(params: ChangeAccountScheduleParams): Promise<PlatformAccountHeader> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: changing account schedule');
+    const result = await this.client.post<VolAccountHeader>(
+      `${API}/TradingAccount/ChangeSchedule`,
+      {
+        accountId: params.accountId,
+        ...(params.startDate && { startDate: params.startDate.toISOString() }),
+        ...(params.endDate && { endDate: params.endDate.toISOString() }),
+      },
+    );
+    return this.mapAccountHeader(result);
+  }
+
   // ── Mapping Helpers ───────────────────────────────────────────────────
 
   private mapUserViewModel(user: VolUserViewModel): PlatformUserResult {
@@ -1263,6 +1473,17 @@ export class VolumetricaProvider implements TradingPlatformProvider {
       endedAt: s.endUtc ? new Date(s.endUtc) : undefined,
       platform: s.platform !== null ? (PLATFORM_MAP[s.platform] ?? String(s.platform)) : undefined,
       ip: s.ip ?? undefined,
+    };
+  }
+
+  private mapBulkEnableDisableResult(
+    r: VolBulkEnableDisableResult,
+  ): PlatformBulkEnableDisableResult {
+    return {
+      platformAccountId: r.accountId ?? '',
+      success: r.success,
+      errorMessage: r.errorMessage ?? undefined,
+      errorCode: r.errorCode !== 0 ? r.errorCode : undefined,
     };
   }
 }

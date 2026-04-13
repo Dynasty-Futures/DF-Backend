@@ -37,6 +37,21 @@ output "google_client_secret_arn" {
   value       = aws_secretsmanager_secret.google_client_secret.arn
 }
 
+output "volumetrica_api_url_arn" {
+  description = "ARN of the VOLUMETRICA_API_URL secret"
+  value       = aws_secretsmanager_secret.volumetrica_api_url.arn
+}
+
+output "volumetrica_api_key_arn" {
+  description = "ARN of the VOLUMETRICA_API_KEY secret"
+  value       = aws_secretsmanager_secret.volumetrica_api_key.arn
+}
+
+output "volumetrica_webhook_secret_arn" {
+  description = "ARN of the VOLUMETRICA_WEBHOOK_SECRET secret"
+  value       = aws_secretsmanager_secret.volumetrica_webhook_secret.arn
+}
+
 output "all_secret_arns" {
   description = "List of all secret ARNs (for IAM policies)"
   value = [
@@ -47,5 +62,8 @@ output "all_secret_arns" {
     aws_secretsmanager_secret.stripe_publishable_key.arn,
     aws_secretsmanager_secret.google_client_id.arn,
     aws_secretsmanager_secret.google_client_secret.arn,
+    aws_secretsmanager_secret.volumetrica_api_url.arn,
+    aws_secretsmanager_secret.volumetrica_api_key.arn,
+    aws_secretsmanager_secret.volumetrica_webhook_secret.arn,
   ]
 }

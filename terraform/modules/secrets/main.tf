@@ -11,6 +11,9 @@
 # - STRIPE_SECRET_KEY
 # - STRIPE_WEBHOOK_SECRET
 # - STRIPE_PUBLISHABLE_KEY
+# - VOLUMETRICA_API_URL
+# - VOLUMETRICA_API_KEY
+# - VOLUMETRICA_WEBHOOK_SECRET
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -130,4 +133,50 @@ resource "aws_secretsmanager_secret" "google_client_secret" {
 resource "aws_secretsmanager_secret_version" "google_client_secret" {
   secret_id     = aws_secretsmanager_secret.google_client_secret.id
   secret_string = var.google_client_secret
+}
+
+# -----------------------------------------------------------------------------
+# Volumetrica (Trading Platform)
+# -----------------------------------------------------------------------------
+
+resource "aws_secretsmanager_secret" "volumetrica_api_url" {
+  name        = "${var.project_name}/${var.environment}/app/volumetrica-api-url"
+  description = "Volumetrica API base URL for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-volumetrica-api-url-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "volumetrica_api_url" {
+  secret_id     = aws_secretsmanager_secret.volumetrica_api_url.id
+  secret_string = var.volumetrica_api_url
+}
+
+resource "aws_secretsmanager_secret" "volumetrica_api_key" {
+  name        = "${var.project_name}/${var.environment}/app/volumetrica-api-key"
+  description = "Volumetrica API key for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-volumetrica-api-key-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "volumetrica_api_key" {
+  secret_id     = aws_secretsmanager_secret.volumetrica_api_key.id
+  secret_string = var.volumetrica_api_key
+}
+
+resource "aws_secretsmanager_secret" "volumetrica_webhook_secret" {
+  name        = "${var.project_name}/${var.environment}/app/volumetrica-webhook-secret"
+  description = "Volumetrica webhook signing secret for ${var.project_name}"
+
+  tags = {
+    Name = "${var.project_name}-volumetrica-webhook-secret-${var.environment}"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "volumetrica_webhook_secret" {
+  secret_id     = aws_secretsmanager_secret.volumetrica_webhook_secret.id
+  secret_string = var.volumetrica_webhook_secret
 }

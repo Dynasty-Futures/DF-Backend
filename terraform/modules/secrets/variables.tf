@@ -55,3 +55,25 @@ variable "google_client_secret" {
   type        = string
   sensitive   = true
 }
+
+# -----------------------------------------------------------------------------
+# Volumetrica
+# -----------------------------------------------------------------------------
+
+variable "volumetrica_api_url" {
+  description = "Volumetrica API base URL (e.g., https://api.volumetrica.com)"
+  type        = string
+  sensitive   = true
+}
+
+variable "volumetrica_api_key" {
+  description = "Volumetrica API key (x-api-key header)"
+  type        = string
+  sensitive   = true
+}
+
+variable "volumetrica_webhook_secret" {
+  description = "Shared secret for verifying Volumetrica webhook requests"
+  type        = string
+  sensitive   = true
+}
