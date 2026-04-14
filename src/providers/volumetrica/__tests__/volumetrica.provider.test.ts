@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { PlatformAccountHeader, PlatformBulkEnableDisableResult } from '../../types';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
