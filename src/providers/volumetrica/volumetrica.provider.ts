@@ -44,6 +44,15 @@ import type {
   BulkEnableAccountsParams,
   BulkDisableAccountsParams,
   PlatformBulkEnableDisableResult,
+  CancelOrderParams,
+  FlatPositionParams,
+  ListSubscriptionsParams,
+  ListSubscriptionsResult,
+  PlatformSubscriptionResult,
+  CreateSubscriptionParams,
+  ConfirmSubscriptionParams,
+  BulkDeactivateSubscriptionsParams,
+  PlatformBulkDeactivateSubscriptionsResult,
 } from '../types.js';
 import { VolumetricaClient } from './volumetrica.client.js';
 import { logger } from '../../utils/logger.js';
@@ -330,6 +339,41 @@ interface VolBulkEnableDisableResult {
   errorCode: number;
 }
 
+/** Subscription view model returned by Subscription endpoints */
+interface VolSubscriptionViewModel {
+  subscriptionId: string | null;
+  confirmationId: string | null;
+  status: number;
+  providerStatus: number | null;
+  activation: string | null;
+  expiration: string | null;
+  dxDataProducts: number[] | null;
+  dxAgreementSigned: boolean;
+  dxAgreementLink: string | null;
+  dxSelfCertification: string | null;
+  platform: number | null;
+  volumetricaPlatform: string | null;
+  volumetricaLicense: string | null;
+  volumetricaDownloadLink: string | null;
+  userId: string | null;
+  lastVersionId: number;
+}
+
+/** DataTable wrapper for Subscription/List */
+interface VolSubscriptionListResult {
+  draw: number;
+  recordsTotal: number;
+  recordsFiltered: number;
+  data: VolSubscriptionViewModel[] | null;
+}
+
+/** Bulk deactivation response */
+interface VolBulkDeactivateResult {
+  success: boolean;
+  subscriptionDeactivated: VolSubscriptionViewModel[] | null;
+  subscriptionErrors: VolSubscriptionViewModel[] | null;
+}
+
 // ── Enum maps ─────────────────────────────────────────────────────────────
 
 const ACCOUNT_STATUS_MAP: Record<number, string> = {
@@ -434,6 +478,30 @@ const REVERSE_ORDER_FILTER_STATUS: Record<string, number> = {
 
 const REVERSE_RULE_REFERENCE: Record<string, number> = {
   Application: 0, Organization: 1, OrganizationOwner: 2,
+};
+
+// ── Subscription enum maps ────────────────────────────────────────────────
+
+const SUBSCRIPTION_STATUS_MAP: Record<number, string> = {
+  0: 'Disabled', 1: 'Active', 2: 'Scheduled',
+  3: 'UserOnHold', 4: 'PropfirmOnHold', 5: 'Error',
+};
+
+const SUBSCRIPTION_PROVIDER_STATUS_MAP: Record<number, string> = {
+  0: 'Disabled', 1: 'Enabled', 2: 'Suspended', 3: 'Terminated', 4: 'Blocked',
+};
+
+const REVERSE_SUBSCRIPTION_STATUS: Record<string, number> = {
+  Disabled: 0, Active: 1, Scheduled: 2,
+  UserOnHold: 3, PropfirmOnHold: 4, Error: 5,
+};
+
+const REVERSE_SUBSCRIPTION_PLATFORM: Record<string, number> = {
+  VOLUMETRICA_TRADING: 0, QUANTOWER: 1, ATAS: 2,
+};
+
+const REVERSE_ORDER_POSITION_FILTER: Record<string, number> = {
+  All: 0, Buy: 1, Sell: 2, Winner: 3, Loser: 4,
 };
 
 // ── Volumetrica TradingRule response shapes ─────────────────────────────────
@@ -1239,6 +1307,180 @@ export class VolumetricaProvider implements TradingPlatformProvider {
     return this.mapAccountHeader(result);
   }
 
+  // ── Trading Operations ──────────────────────────────────────────────────
+
+  async cancelOrder(params: CancelOrderParams): Promise<void> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: cancelling order');
+    await this.client.post(`${API}/Trading/CancelOrder`, {
+      accountId: params.accountId,
+      ...(params.orderId !== undefined && { orderId: params.orderId }),
+      ...(params.filter && { filter: REVERSE_ORDER_POSITION_FILTER[params.filter] }),
+    });
+  }
+
+  async flatPosition(params: FlatPositionParams): Promise<void> {
+    logger.info({ accountId: params.accountId }, 'Volumetrica: flattening position');
+    await this.client.post(`${API}/Trading/FlatPosition`, {
+      accountId: params.accountId,
+      ...(params.contractId !== undefined && { contractId: params.contractId }),
+      ...(params.positionId !== undefined && { positionId: params.positionId }),
+      ...(params.filter && { filter: REVERSE_ORDER_POSITION_FILTER[params.filter] }),
+    });
+  }
+
+  // ── Subscription Operations ────────────────────────────────────────────
+
+  async listSubscriptions(
+    params?: ListSubscriptionsParams | undefined,
+  ): Promise<ListSubscriptionsResult> {
+    logger.info('Volumetrica: listing subscriptions');
+    const result = await this.client.get<VolSubscriptionListResult>(
+      `${API}/Subscription/List`,
+      {
+        ...(params?.status && { subscriptionStatus: REVERSE_SUBSCRIPTION_STATUS[params.status] }),
+        ...(params?.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+        ...(params?.skip !== undefined && { skip: params.skip }),
+        ...(params?.take !== undefined && { take: params.take }),
+      },
+    );
+    return {
+      total: result.recordsTotal,
+      filtered: result.recordsFiltered,
+      subscriptions: (result.data ?? []).map((s) => this.mapSubscription(s)),
+    };
+  }
+
+  async getSubscription(opts: {
+    userId?: string | undefined;
+    subscriptionId?: string | undefined;
+  }): Promise<PlatformSubscriptionResult> {
+    logger.info(opts, 'Volumetrica: getting subscription');
+    const result = await this.client.get<VolSubscriptionViewModel>(
+      `${API}/Subscription`,
+      {
+        ...(opts.userId && { userId: opts.userId }),
+        ...(opts.subscriptionId && { subscriptionId: opts.subscriptionId }),
+      },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async createSubscription(
+    params: CreateSubscriptionParams,
+  ): Promise<PlatformSubscriptionResult> {
+    logger.info({ userId: params.userId }, 'Volumetrica: creating subscription');
+    const result = await this.client.post<VolSubscriptionViewModel>(
+      `${API}/Subscription`,
+      {
+        userId: params.userId,
+        enabled: params.enabled,
+        ...(params.dataFeedProducts && { dataFeedProducts: params.dataFeedProducts }),
+        ...(params.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+        ...(params.startDate && { startDate: params.startDate.toISOString() }),
+        ...(params.durationMonths !== undefined && { durationMonths: params.durationMonths }),
+        ...(params.durationDays !== undefined && { durationDays: params.durationDays }),
+        ...(params.volumetricaPlatform !== undefined && {
+          volumetricaPlatform: params.volumetricaPlatform,
+        }),
+        ...(params.forceUserOnboarding !== undefined && {
+          forceUserOnboarding: params.forceUserOnboarding,
+        }),
+        ...(params.allowedSelfCertification !== undefined && {
+          allowedSelfCertification: params.allowedSelfCertification,
+        }),
+        ...(params.redirectUrl && { redirectUrl: params.redirectUrl }),
+      },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async updateSubscription(
+    subscriptionId: string,
+    params: CreateSubscriptionParams,
+  ): Promise<PlatformSubscriptionResult> {
+    logger.info({ subscriptionId }, 'Volumetrica: updating subscription');
+    const result = await this.client.put<VolSubscriptionViewModel>(
+      `${API}/Subscription?subscriptionId=${encodeURIComponent(subscriptionId)}`,
+      {
+        userId: params.userId,
+        enabled: params.enabled,
+        ...(params.dataFeedProducts && { dataFeedProducts: params.dataFeedProducts }),
+        ...(params.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+        ...(params.startDate && { startDate: params.startDate.toISOString() }),
+        ...(params.durationMonths !== undefined && { durationMonths: params.durationMonths }),
+        ...(params.durationDays !== undefined && { durationDays: params.durationDays }),
+        ...(params.volumetricaPlatform !== undefined && {
+          volumetricaPlatform: params.volumetricaPlatform,
+        }),
+        ...(params.forceUserOnboarding !== undefined && {
+          forceUserOnboarding: params.forceUserOnboarding,
+        }),
+        ...(params.allowedSelfCertification !== undefined && {
+          allowedSelfCertification: params.allowedSelfCertification,
+        }),
+        ...(params.redirectUrl && { redirectUrl: params.redirectUrl }),
+      },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async deleteSubscription(subscriptionId: string): Promise<void> {
+    logger.info({ subscriptionId }, 'Volumetrica: deleting subscription');
+    await this.client.del(
+      `${API}/Subscription?subscriptionId=${encodeURIComponent(subscriptionId)}`,
+    );
+  }
+
+  async activateSubscription(subscriptionId: string): Promise<PlatformSubscriptionResult> {
+    logger.info({ subscriptionId }, 'Volumetrica: activating subscription');
+    const result = await this.client.post<VolSubscriptionViewModel>(
+      `${API}/Subscription/Active`,
+      { subscriptionId },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async confirmSubscription(
+    params: ConfirmSubscriptionParams,
+  ): Promise<PlatformSubscriptionResult> {
+    logger.info({ subscriptionId: params.subscriptionId }, 'Volumetrica: confirming subscription');
+    const result = await this.client.post<VolSubscriptionViewModel>(
+      `${API}/Subscription/Confirm`,
+      {
+        subscriptionId: params.subscriptionId,
+        confirmationId: params.confirmationId,
+      },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async deactivateSubscription(subscriptionId: string): Promise<PlatformSubscriptionResult> {
+    logger.info({ subscriptionId }, 'Volumetrica: deactivating subscription');
+    const result = await this.client.post<VolSubscriptionViewModel>(
+      `${API}/Subscription/Deactive`,
+      { subscriptionId },
+    );
+    return this.mapSubscription(result);
+  }
+
+  async bulkDeactivateSubscriptions(
+    params: BulkDeactivateSubscriptionsParams,
+  ): Promise<PlatformBulkDeactivateSubscriptionsResult> {
+    logger.info('Volumetrica: bulk deactivating subscriptions');
+    const result = await this.client.post<VolBulkDeactivateResult>(
+      `${API}/Subscription/BulkDeactive`,
+      {
+        includeWithActiveTradingAccounts: params.includeWithActiveTradingAccounts,
+        considerScheduledTradingAccountAsActive: params.considerScheduledTradingAccountAsActive,
+      },
+    );
+    return {
+      success: result.success,
+      deactivated: (result.subscriptionDeactivated ?? []).map((s) => this.mapSubscription(s)),
+      errors: (result.subscriptionErrors ?? []).map((s) => this.mapSubscription(s)),
+    };
+  }
+
   // ── Mapping Helpers ───────────────────────────────────────────────────
 
   private mapUserViewModel(user: VolUserViewModel): PlatformUserResult {
@@ -1484,6 +1726,31 @@ export class VolumetricaProvider implements TradingPlatformProvider {
       success: r.success,
       errorMessage: r.errorMessage ?? undefined,
       errorCode: r.errorCode !== 0 ? r.errorCode : undefined,
+    };
+  }
+
+  private mapSubscription(s: VolSubscriptionViewModel): PlatformSubscriptionResult {
+    return {
+      subscriptionId: s.subscriptionId ?? '',
+      confirmationId: s.confirmationId ?? undefined,
+      status: (SUBSCRIPTION_STATUS_MAP[s.status] ?? String(s.status)) as PlatformSubscriptionResult['status'],
+      providerStatus: s.providerStatus !== null
+        ? ((SUBSCRIPTION_PROVIDER_STATUS_MAP[s.providerStatus] ?? String(s.providerStatus)) as PlatformSubscriptionResult['providerStatus'])
+        : undefined,
+      activation: s.activation ? new Date(s.activation) : undefined,
+      expiration: s.expiration ? new Date(s.expiration) : undefined,
+      dataFeedProducts: s.dxDataProducts ?? undefined,
+      agreementSigned: s.dxAgreementSigned,
+      agreementLink: s.dxAgreementLink ?? undefined,
+      selfCertification: s.dxSelfCertification ?? undefined,
+      platform: s.platform !== null
+        ? ((PLATFORM_MAP[s.platform] ?? String(s.platform)) as PlatformSubscriptionResult['platform'])
+        : undefined,
+      volumetricaPlatform: s.volumetricaPlatform ?? undefined,
+      volumetricaLicense: s.volumetricaLicense ?? undefined,
+      downloadLink: s.volumetricaDownloadLink ?? undefined,
+      userId: s.userId ?? undefined,
+      lastVersionId: s.lastVersionId,
     };
   }
 }

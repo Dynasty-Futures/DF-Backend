@@ -1,4 +1,8 @@
-import type { PlatformAccountHeader, PlatformBulkEnableDisableResult } from '../../types';
+import type {
+  PlatformAccountHeader,
+  PlatformBulkEnableDisableResult,
+  PlatformSubscriptionResult,
+} from '../../types';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -506,5 +510,418 @@ describe('changeAccountSchedule', () => {
     const result = await provider.changeAccountSchedule({ accountId: 'acc-1' });
     expect(result.platformAccountId).toBe('acc-123');
     expect(result.createdAt).toBeInstanceOf(Date);
+  });
+});
+
+// ── Helpers for Trading + Subscription tests ──────────────────────────────
+
+const makeVolSubscription = (overrides: Record<string, unknown> = {}) => ({
+  subscriptionId: 'sub-123',
+  confirmationId: 'conf-456',
+  status: 1, // Active
+  providerStatus: 1, // Enabled
+  activation: '2026-03-01T00:00:00Z',
+  expiration: '2026-04-01T00:00:00Z',
+  dxDataProducts: [1, 2, 3],
+  dxAgreementSigned: true,
+  dxAgreementLink: 'https://example.com/agreement',
+  dxSelfCertification: 'non-pro',
+  platform: 0, // VOLUMETRICA_TRADING
+  volumetricaPlatform: 'Deepchart',
+  volumetricaLicense: 'LIC-001',
+  volumetricaDownloadLink: 'https://example.com/download',
+  userId: 'user-1',
+  lastVersionId: 42,
+  ...overrides,
+});
+
+// ── cancelOrder ────────────────────────────────────────────────────────────
+
+describe('cancelOrder', () => {
+  it('calls correct API path with accountId only', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    await provider.cancelOrder({ accountId: 'acc-1' });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Trading/CancelOrder', {
+      accountId: 'acc-1',
+    });
+  });
+
+  it('includes orderId and filter when provided', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    await provider.cancelOrder({
+      accountId: 'acc-1',
+      orderId: 500,
+      filter: 'Buy',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Trading/CancelOrder', {
+      accountId: 'acc-1',
+      orderId: 500,
+      filter: 1, // Buy
+    });
+  });
+
+  it('returns void', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    const result = await provider.cancelOrder({ accountId: 'acc-1' });
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── flatPosition ───────────────────────────────────────────────────────────
+
+describe('flatPosition', () => {
+  it('calls correct API path with accountId only', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    await provider.flatPosition({ accountId: 'acc-1' });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Trading/FlatPosition', {
+      accountId: 'acc-1',
+    });
+  });
+
+  it('includes all optional params when provided', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    await provider.flatPosition({
+      accountId: 'acc-1',
+      contractId: 100,
+      positionId: 200,
+      filter: 'Sell',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Trading/FlatPosition', {
+      accountId: 'acc-1',
+      contractId: 100,
+      positionId: 200,
+      filter: 2, // Sell
+    });
+  });
+
+  it('returns void', async () => {
+    mockPost.mockResolvedValue({ success: true });
+    const result = await provider.flatPosition({ accountId: 'acc-1' });
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── listSubscriptions ──────────────────────────────────────────────────────
+
+describe('listSubscriptions', () => {
+  it('calls correct API path with no params', async () => {
+    mockGet.mockResolvedValue({
+      draw: 0,
+      recordsTotal: 0,
+      recordsFiltered: 0,
+      data: [],
+    });
+    await provider.listSubscriptions();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/List', {});
+  });
+
+  it('includes filters when provided', async () => {
+    mockGet.mockResolvedValue({
+      draw: 0,
+      recordsTotal: 1,
+      recordsFiltered: 1,
+      data: [makeVolSubscription()],
+    });
+    await provider.listSubscriptions({
+      status: 'Active',
+      platform: 'QUANTOWER',
+      skip: 0,
+      take: 10,
+    });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/List', {
+      subscriptionStatus: 1, // Active
+      platform: 1, // QUANTOWER
+      skip: 0,
+      take: 10,
+    });
+  });
+
+  it('maps response to ListSubscriptionsResult', async () => {
+    mockGet.mockResolvedValue({
+      draw: 1,
+      recordsTotal: 5,
+      recordsFiltered: 3,
+      data: [makeVolSubscription()],
+    });
+    const result = await provider.listSubscriptions();
+    expect(result.total).toBe(5);
+    expect(result.filtered).toBe(3);
+    expect(result.subscriptions).toHaveLength(1);
+    const sub: PlatformSubscriptionResult = result.subscriptions[0]!;
+    expect(sub.subscriptionId).toBe('sub-123');
+    expect(sub.status).toBe('Active');
+    expect(sub.providerStatus).toBe('Enabled');
+    expect(sub.platform).toBe('VOLUMETRICA_TRADING');
+    expect(sub.activation).toBeInstanceOf(Date);
+    expect(sub.expiration).toBeInstanceOf(Date);
+    expect(sub.agreementSigned).toBe(true);
+    expect(sub.dataFeedProducts).toEqual([1, 2, 3]);
+    expect(sub.downloadLink).toBe('https://example.com/download');
+    expect(sub.lastVersionId).toBe(42);
+  });
+
+  it('handles null data array', async () => {
+    mockGet.mockResolvedValue({
+      draw: 0,
+      recordsTotal: 0,
+      recordsFiltered: 0,
+      data: null,
+    });
+    const result = await provider.listSubscriptions();
+    expect(result.subscriptions).toEqual([]);
+  });
+});
+
+// ── getSubscription ────────────────────────────────────────────────────────
+
+describe('getSubscription', () => {
+  it('calls with userId', async () => {
+    mockGet.mockResolvedValue(makeVolSubscription());
+    await provider.getSubscription({ userId: 'user-1' });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Subscription', {
+      userId: 'user-1',
+    });
+  });
+
+  it('calls with subscriptionId', async () => {
+    mockGet.mockResolvedValue(makeVolSubscription());
+    await provider.getSubscription({ subscriptionId: 'sub-123' });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Subscription', {
+      subscriptionId: 'sub-123',
+    });
+  });
+
+  it('maps nullable fields correctly', async () => {
+    mockGet.mockResolvedValue(
+      makeVolSubscription({
+        confirmationId: null,
+        providerStatus: null,
+        activation: null,
+        platform: null,
+      }),
+    );
+    const result = await provider.getSubscription({ subscriptionId: 'sub-123' });
+    expect(result.confirmationId).toBeUndefined();
+    expect(result.providerStatus).toBeUndefined();
+    expect(result.activation).toBeUndefined();
+    expect(result.platform).toBeUndefined();
+  });
+});
+
+// ── createSubscription ─────────────────────────────────────────────────────
+
+describe('createSubscription', () => {
+  it('sends correct body with required + optional params', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription());
+    const startDate = new Date('2026-04-01T00:00:00Z');
+    await provider.createSubscription({
+      userId: 'user-1',
+      enabled: true,
+      dataFeedProducts: [1, 2],
+      platform: 'ATAS',
+      startDate,
+      durationMonths: 1,
+      durationDays: 15,
+      volumetricaPlatform: 2,
+      forceUserOnboarding: true,
+      allowedSelfCertification: 1,
+      redirectUrl: 'https://example.com/callback',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription', {
+      userId: 'user-1',
+      enabled: true,
+      dataFeedProducts: [1, 2],
+      platform: 2, // ATAS
+      startDate: startDate.toISOString(),
+      durationMonths: 1,
+      durationDays: 15,
+      volumetricaPlatform: 2,
+      forceUserOnboarding: true,
+      allowedSelfCertification: 1,
+      redirectUrl: 'https://example.com/callback',
+    });
+  });
+
+  it('omits optional fields when not provided', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription());
+    await provider.createSubscription({
+      userId: 'user-1',
+      enabled: false,
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription', {
+      userId: 'user-1',
+      enabled: false,
+    });
+  });
+
+  it('returns mapped PlatformSubscriptionResult', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription());
+    const result = await provider.createSubscription({
+      userId: 'user-1',
+      enabled: true,
+    });
+    expect(result.subscriptionId).toBe('sub-123');
+    expect(result.status).toBe('Active');
+  });
+});
+
+// ── updateSubscription ─────────────────────────────────────────────────────
+
+describe('updateSubscription', () => {
+  it('calls PUT with subscriptionId in query string', async () => {
+    mockPut.mockResolvedValue(makeVolSubscription());
+    await provider.updateSubscription('sub-123', {
+      userId: 'user-1',
+      enabled: true,
+    });
+    expect(mockPut).toHaveBeenCalledWith(
+      '/api/v2/Propsite/Subscription?subscriptionId=sub-123',
+      {
+        userId: 'user-1',
+        enabled: true,
+      },
+    );
+  });
+
+  it('returns mapped subscription', async () => {
+    mockPut.mockResolvedValue(makeVolSubscription({ status: 2 }));
+    const result = await provider.updateSubscription('sub-123', {
+      userId: 'user-1',
+      enabled: true,
+    });
+    expect(result.status).toBe('Scheduled');
+  });
+});
+
+// ── deleteSubscription ─────────────────────────────────────────────────────
+
+describe('deleteSubscription', () => {
+  it('calls DEL with subscriptionId in query string', async () => {
+    mockDel.mockResolvedValue(undefined);
+    await provider.deleteSubscription('sub-123');
+    expect(mockDel).toHaveBeenCalledWith(
+      '/api/v2/Propsite/Subscription?subscriptionId=sub-123',
+    );
+  });
+
+  it('returns void', async () => {
+    mockDel.mockResolvedValue(undefined);
+    const result = await provider.deleteSubscription('sub-123');
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── activateSubscription ───────────────────────────────────────────────────
+
+describe('activateSubscription', () => {
+  it('calls correct API path with subscriptionId', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription({ status: 1 }));
+    await provider.activateSubscription('sub-123');
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/Active', {
+      subscriptionId: 'sub-123',
+    });
+  });
+
+  it('returns mapped subscription', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription({ status: 1 }));
+    const result = await provider.activateSubscription('sub-123');
+    expect(result.status).toBe('Active');
+  });
+});
+
+// ── confirmSubscription ────────────────────────────────────────────────────
+
+describe('confirmSubscription', () => {
+  it('sends both subscriptionId and confirmationId', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription());
+    await provider.confirmSubscription({
+      subscriptionId: 'sub-123',
+      confirmationId: 'conf-456',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/Confirm', {
+      subscriptionId: 'sub-123',
+      confirmationId: 'conf-456',
+    });
+  });
+
+  it('returns mapped subscription', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription());
+    const result = await provider.confirmSubscription({
+      subscriptionId: 'sub-123',
+      confirmationId: 'conf-456',
+    });
+    expect(result.subscriptionId).toBe('sub-123');
+    expect(result.confirmationId).toBe('conf-456');
+  });
+});
+
+// ── deactivateSubscription ─────────────────────────────────────────────────
+
+describe('deactivateSubscription', () => {
+  it('calls correct API path', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription({ status: 0 }));
+    await provider.deactivateSubscription('sub-123');
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/Deactive', {
+      subscriptionId: 'sub-123',
+    });
+  });
+
+  it('returns mapped subscription with Disabled status', async () => {
+    mockPost.mockResolvedValue(makeVolSubscription({ status: 0 }));
+    const result = await provider.deactivateSubscription('sub-123');
+    expect(result.status).toBe('Disabled');
+  });
+});
+
+// ── bulkDeactivateSubscriptions ────────────────────────────────────────────
+
+describe('bulkDeactivateSubscriptions', () => {
+  it('sends correct body', async () => {
+    mockPost.mockResolvedValue({
+      success: true,
+      subscriptionDeactivated: [],
+      subscriptionErrors: [],
+    });
+    await provider.bulkDeactivateSubscriptions({
+      includeWithActiveTradingAccounts: true,
+      considerScheduledTradingAccountAsActive: false,
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/Subscription/BulkDeactive', {
+      includeWithActiveTradingAccounts: true,
+      considerScheduledTradingAccountAsActive: false,
+    });
+  });
+
+  it('maps deactivated and error subscriptions', async () => {
+    mockPost.mockResolvedValue({
+      success: true,
+      subscriptionDeactivated: [makeVolSubscription({ status: 0 })],
+      subscriptionErrors: [makeVolSubscription({ subscriptionId: 'sub-err', status: 5 })],
+    });
+    const result = await provider.bulkDeactivateSubscriptions({
+      includeWithActiveTradingAccounts: false,
+      considerScheduledTradingAccountAsActive: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.deactivated).toHaveLength(1);
+    expect(result.deactivated[0]!.status).toBe('Disabled');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.subscriptionId).toBe('sub-err');
+    expect(result.errors[0]!.status).toBe('Error');
+  });
+
+  it('handles null arrays in response', async () => {
+    mockPost.mockResolvedValue({
+      success: false,
+      subscriptionDeactivated: null,
+      subscriptionErrors: null,
+    });
+    const result = await provider.bulkDeactivateSubscriptions({
+      includeWithActiveTradingAccounts: false,
+      considerScheduledTradingAccountAsActive: false,
+    });
+    expect(result.success).toBe(false);
+    expect(result.deactivated).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 });

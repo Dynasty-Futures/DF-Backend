@@ -40,6 +40,15 @@ import type {
   BulkDisableAccountsParams,
   PlatformBulkEnableDisableResult,
   OrderFilterStatus,
+  CancelOrderParams,
+  FlatPositionParams,
+  ListSubscriptionsParams,
+  ListSubscriptionsResult,
+  PlatformSubscriptionResult,
+  CreateSubscriptionParams,
+  ConfirmSubscriptionParams,
+  BulkDeactivateSubscriptionsParams,
+  PlatformBulkDeactivateSubscriptionsResult,
 } from './types.js';
 
 export interface TradingPlatformProvider {
@@ -230,4 +239,41 @@ export interface TradingPlatformProvider {
     platform?: string | undefined,
     nextPageToken?: string | undefined,
   ): Promise<PaginatedResult<PlatformSessionLog[]>>;
+
+  // ── Trading Operations ──────────────────────────────────────────────────
+
+  /** Cancel one or all orders on an account. */
+  cancelOrder(params: CancelOrderParams): Promise<void>;
+
+  /** Flatten one or all positions on an account. */
+  flatPosition(params: FlatPositionParams): Promise<void>;
+
+  // ── Subscription Operations ─────────────────────────────────────────────
+
+  /** List subscriptions with optional filters. */
+  listSubscriptions(params?: ListSubscriptionsParams | undefined): Promise<ListSubscriptionsResult>;
+
+  /** Get a subscription by subscriptionId or userId. */
+  getSubscription(opts: { userId?: string | undefined; subscriptionId?: string | undefined }): Promise<PlatformSubscriptionResult>;
+
+  /** Create a new subscription. */
+  createSubscription(params: CreateSubscriptionParams): Promise<PlatformSubscriptionResult>;
+
+  /** Update an existing subscription. */
+  updateSubscription(subscriptionId: string, params: CreateSubscriptionParams): Promise<PlatformSubscriptionResult>;
+
+  /** Delete a subscription. */
+  deleteSubscription(subscriptionId: string): Promise<void>;
+
+  /** Activate a scheduled or disabled subscription. */
+  activateSubscription(subscriptionId: string): Promise<PlatformSubscriptionResult>;
+
+  /** Confirm a subscription on hold by the propfirm. */
+  confirmSubscription(params: ConfirmSubscriptionParams): Promise<PlatformSubscriptionResult>;
+
+  /** Deactivate a subscription. */
+  deactivateSubscription(subscriptionId: string): Promise<PlatformSubscriptionResult>;
+
+  /** Bulk deactivate subscriptions based on conditions. */
+  bulkDeactivateSubscriptions(params: BulkDeactivateSubscriptionsParams): Promise<PlatformBulkDeactivateSubscriptionsResult>;
 }

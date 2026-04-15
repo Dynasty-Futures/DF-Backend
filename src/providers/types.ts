@@ -387,6 +387,108 @@ export interface PlatformSessionLog {
   ip?: string | undefined;
 }
 
+// ── Trading Operations ────────────────────────────────────────────────────
+
+export type OrderPositionFilter = 'All' | 'Buy' | 'Sell' | 'Winner' | 'Loser';
+
+export interface CancelOrderParams {
+  accountId: string;
+  /** If undefined, all orders on the account are cancelled */
+  orderId?: number | undefined;
+  filter?: OrderPositionFilter | undefined;
+}
+
+export interface FlatPositionParams {
+  accountId: string;
+  /** If undefined, all positions on the account are flattened */
+  contractId?: number | undefined;
+  /** Required to close a specific position on hedging accounts */
+  positionId?: number | undefined;
+  filter?: OrderPositionFilter | undefined;
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────
+
+export type SubscriptionStatus =
+  | 'Disabled'
+  | 'Active'
+  | 'Scheduled'
+  | 'UserOnHold'
+  | 'PropfirmOnHold'
+  | 'Error';
+
+export type SubscriptionProviderStatus =
+  | 'Disabled'
+  | 'Enabled'
+  | 'Suspended'
+  | 'Terminated'
+  | 'Blocked';
+
+export type SubscriptionPlatform = 'VOLUMETRICA_TRADING' | 'QUANTOWER' | 'ATAS';
+
+export interface PlatformSubscriptionResult {
+  subscriptionId: string;
+  confirmationId?: string | undefined;
+  status: SubscriptionStatus;
+  providerStatus?: SubscriptionProviderStatus | undefined;
+  activation?: Date | undefined;
+  expiration?: Date | undefined;
+  dataFeedProducts?: number[] | undefined;
+  agreementSigned: boolean;
+  agreementLink?: string | undefined;
+  selfCertification?: string | undefined;
+  platform?: SubscriptionPlatform | undefined;
+  volumetricaPlatform?: string | undefined;
+  volumetricaLicense?: string | undefined;
+  downloadLink?: string | undefined;
+  userId?: string | undefined;
+  lastVersionId: number;
+}
+
+export interface ListSubscriptionsParams {
+  status?: SubscriptionStatus | undefined;
+  platform?: SubscriptionPlatform | undefined;
+  skip?: number | undefined;
+  take?: number | undefined;
+}
+
+export interface ListSubscriptionsResult {
+  total: number;
+  filtered: number;
+  subscriptions: PlatformSubscriptionResult[];
+}
+
+export interface CreateSubscriptionParams {
+  userId: string;
+  dataFeedProducts?: number[] | undefined;
+  platform?: SubscriptionPlatform | undefined;
+  startDate?: Date | undefined;
+  durationMonths?: number | undefined;
+  durationDays?: number | undefined;
+  enabled: boolean;
+  /** 1 = Deepchart, 2 = Deepdom */
+  volumetricaPlatform?: number | undefined;
+  forceUserOnboarding?: boolean | undefined;
+  allowedSelfCertification?: number | undefined;
+  redirectUrl?: string | undefined;
+}
+
+export interface ConfirmSubscriptionParams {
+  subscriptionId: string;
+  confirmationId: string;
+}
+
+export interface BulkDeactivateSubscriptionsParams {
+  includeWithActiveTradingAccounts: boolean;
+  considerScheduledTradingAccountAsActive: boolean;
+}
+
+export interface PlatformBulkDeactivateSubscriptionsResult {
+  success: boolean;
+  deactivated: PlatformSubscriptionResult[];
+  errors: PlatformSubscriptionResult[];
+}
+
 // ── Account Management Enums ──────────────────────────────────────────────
 
 export type AccountStatus = 'Initialized' | 'Enabled' | 'ChallengeSuccess' | 'ChallengeFailed' | 'Disabled';
