@@ -49,6 +49,29 @@ import type {
   ConfirmSubscriptionParams,
   BulkDeactivateSubscriptionsParams,
   PlatformBulkDeactivateSubscriptionsResult,
+  ListAccountsParams,
+  ListAccountsResult,
+  ListUsersParams,
+  ListUsersResult,
+  PlatformCurrencyRate,
+  UpdateCurrencyRateParams,
+  PlatformEconomicNewsEvent,
+  UpdateEconomicNewsParams,
+  ExportTradeListParams,
+  PlatformGroupUniverseResult,
+  CreateGroupUniverseParams,
+  ListGroupUniversesParams,
+  ListGroupUniversesResult,
+  PlatformSymbolInfo,
+  PlatformValidationResult,
+  DuplicateTradingRuleParams,
+  ChangeTradingRuleGroupUniverseParams,
+  GenerateTradingTokenParams,
+  PlatformTradingTokenResult,
+  AuthTradingWssParams,
+  PlatformTradingWssAuthResult,
+  PlatformWebhookEvent,
+  PlatformWebhookBulkEvent,
 } from './types.js';
 
 export interface TradingPlatformProvider {
@@ -276,4 +299,96 @@ export interface TradingPlatformProvider {
 
   /** Bulk deactivate subscriptions based on conditions. */
   bulkDeactivateSubscriptions(params: BulkDeactivateSubscriptionsParams): Promise<PlatformBulkDeactivateSubscriptionsResult>;
+
+  // ── Account / User Listing ─────────────────────────────────────────────
+
+  /** List trading accounts with filters and pagination. */
+  listAccounts(params?: ListAccountsParams | undefined): Promise<ListAccountsResult>;
+
+  /** List users with filters and pagination. */
+  listUsers(params?: ListUsersParams | undefined): Promise<ListUsersResult>;
+
+  // ── Currency Rates ─────────────────────────────────────────────────────
+
+  /** Get global currency exchange rates. */
+  getCurrencyRates(): Promise<PlatformCurrencyRate[]>;
+
+  /** Update currency exchange rates. */
+  updateCurrencyRates(rates: UpdateCurrencyRateParams[]): Promise<void>;
+
+  // ── Economic News ──────────────────────────────────────────────────────
+
+  /** Get economic news events available for inhibit. */
+  getEconomicNews(): Promise<PlatformEconomicNewsEvent[]>;
+
+  /** Update which economic news events inhibit trading. */
+  updateEconomicNewsInhibit(params: UpdateEconomicNewsParams): Promise<void>;
+
+  // ── Export ─────────────────────────────────────────────────────────────
+
+  /** Export trade list as CSV between two dates. */
+  exportTradeListCsv(params: ExportTradeListParams): Promise<string>;
+
+  // ── Group Universe ─────────────────────────────────────────────────────
+
+  /** List group universes with pagination. */
+  listGroupUniverses(params?: ListGroupUniversesParams | undefined): Promise<ListGroupUniversesResult>;
+
+  /** Get a single group universe by ID. */
+  getGroupUniverse(groupId: string, reference?: string | undefined): Promise<PlatformGroupUniverseResult>;
+
+  /** Create a new group universe. */
+  createGroupUniverse(params: CreateGroupUniverseParams): Promise<PlatformGroupUniverseResult>;
+
+  /** Update an existing group universe. */
+  updateGroupUniverse(
+    groupId: string,
+    params: CreateGroupUniverseParams,
+    reference?: string | undefined,
+  ): Promise<PlatformGroupUniverseResult>;
+
+  // ── Symbols ────────────────────────────────────────────────────────────
+
+  /** List available trading symbols. */
+  listSymbols(): Promise<PlatformSymbolInfo[]>;
+
+  /** Get the contract name for a given contract ID. */
+  getContractName(contractId: number): Promise<string>;
+
+  /** Get the symbol name for a given contract ID. */
+  getSymbolName(contractId: number): Promise<string>;
+
+  // ── Trading Rule Updates ───────────────────────────────────────────────
+
+  /** Update an existing trading rule. */
+  updateTradingRule(
+    ruleId: string,
+    params: CreatePlatformTradingRuleParams,
+    reference?: string | undefined,
+  ): Promise<PlatformTradingRuleResult>;
+
+  /** Validate a trading rule without creating it. */
+  validateTradingRule(params: CreatePlatformTradingRuleParams): Promise<PlatformValidationResult>;
+
+  /** Change the group universe associated with a trading rule. */
+  changeTradingRuleGroupUniverse(params: ChangeTradingRuleGroupUniverseParams): Promise<void>;
+
+  /** Duplicate an existing trading rule. */
+  duplicateTradingRule(params: DuplicateTradingRuleParams): Promise<PlatformTradingRuleResult>;
+
+  // ── Trading Token / WSS ────────────────────────────────────────────────
+
+  /** Generate a trading token for WSS connection. */
+  generateTradingToken(params: GenerateTradingTokenParams): Promise<PlatformTradingTokenResult>;
+
+  /** Authenticate for trading WSS with full data feed info. */
+  authTradingWss(params: AuthTradingWssParams): Promise<PlatformTradingWssAuthResult>;
+
+  // ── Webhook Reference ──────────────────────────────────────────────────
+
+  /** Get the webhook event model (reference/documentation endpoint). */
+  getWebhookModel(): Promise<PlatformWebhookEvent>;
+
+  /** Get the bulk webhook event model (reference/documentation endpoint). */
+  getWebhookBulkModel(): Promise<PlatformWebhookBulkEvent[]>;
 }

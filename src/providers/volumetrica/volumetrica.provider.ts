@@ -53,6 +53,32 @@ import type {
   ConfirmSubscriptionParams,
   BulkDeactivateSubscriptionsParams,
   PlatformBulkDeactivateSubscriptionsResult,
+  ListAccountsParams,
+  ListAccountsResult,
+  ListUsersParams,
+  ListUsersResult,
+  PlatformCurrencyRate,
+  UpdateCurrencyRateParams,
+  PlatformEconomicNewsEvent,
+  UpdateEconomicNewsParams,
+  ExportTradeListParams,
+  PlatformGroupUniverseResult,
+  PlatformGroupUniverseExchange,
+  PlatformGroupUniverseSymbol,
+  PlatformGroupUniverseSymbolGroup,
+  CreateGroupUniverseParams,
+  ListGroupUniversesParams,
+  ListGroupUniversesResult,
+  PlatformSymbolInfo,
+  PlatformValidationResult,
+  DuplicateTradingRuleParams,
+  ChangeTradingRuleGroupUniverseParams,
+  GenerateTradingTokenParams,
+  PlatformTradingTokenResult,
+  AuthTradingWssParams,
+  PlatformTradingWssAuthResult,
+  PlatformWebhookEvent,
+  PlatformWebhookBulkEvent,
 } from '../types.js';
 import { VolumetricaClient } from './volumetrica.client.js';
 import { logger } from '../../utils/logger.js';
@@ -374,6 +400,177 @@ interface VolBulkDeactivateResult {
   subscriptionErrors: VolSubscriptionViewModel[] | null;
 }
 
+// ── Volumetrica Currency Rate response shapes ────────────────────────────
+
+interface VolCurrencyRateElement {
+  baseCurrency: number;
+  conversionCurrency: number;
+  frequencyUpdate: number;
+  exchangeRate: number;
+  spreadType: number;
+  spread: number;
+  lastUpdate: string;
+}
+
+// ── Volumetrica Economic News response shapes ────────────────────────────
+
+interface VolEconomicCalendarEvent {
+  eventId: number;
+  utcUnixMs: number;
+  description: string | null;
+  countryIso: string | null;
+  intensity: number;
+  inhibit: boolean;
+}
+
+// ── Volumetrica Group Universe response shapes ───────────────────────────
+
+interface VolGroupUniverseResult {
+  groupId: string | null;
+  description: string | null;
+  organizationReferenceId: string | null;
+  productType: number;
+  symbolAllowedMode: number;
+  excludeSymbolsNotListed: boolean;
+  inhibitTradeCopier: boolean;
+  exchanges: VolBaseGroupUniverseExchange[] | null;
+  symbols: VolBaseGroupUniverseSymbol[] | null;
+  symbolGroups: VolBaseGroupUniverseSymbolGroup[] | null;
+  borrowSymbols: number[] | null;
+}
+
+interface VolBaseGroupUniverseExchange {
+  exchangeId: number;
+  commissionsMode: number | null;
+  commissions: number;
+  makerCommissions: number | null;
+  minContractsCalculation: number | null;
+  minContractsValue: number | null;
+  multipleContracts: number | null;
+  minMoneyExpositionUnit: number | null;
+  minMoneyExpositionValue: number | null;
+  maxMoneyExpositionUnit: number | null;
+  maxMoneyExpositionValue: number | null;
+  leverage: number | null;
+}
+
+interface VolBaseGroupUniverseSymbol {
+  symbolId: number;
+  margin: number | null;
+  commissions: number | null;
+  makerCommissions: number | null;
+  maxContracts: number | null;
+  maxMoneyExposition: number | null;
+  leverage: number | null;
+}
+
+interface VolBaseGroupUniverseSymbolGroup {
+  symbolGroupId: string | null;
+  margin: number | null;
+  commissions: number | null;
+  maxContractsSumMode: number | null;
+  maxContractsCalculation: number | null;
+  maxContractsValue: number | null;
+}
+
+interface VolGroupUniverseListResult {
+  draw: number;
+  recordsTotal: number;
+  recordsFiltered: number;
+  data: VolGroupUniverseResult[] | null;
+}
+
+// ── Volumetrica Symbol response shapes ───────────────────────────────────
+
+interface VolSymbolInfoViewModel {
+  id: number;
+  name: string | null;
+  description: string | null;
+  exchange: string | null;
+  symbolGroup: string | null;
+  margin: number;
+  commission: number;
+  inhibitTrading: boolean;
+  archived: boolean;
+  adv14D: number | null;
+  adv50D: number | null;
+  adc14D: number | null;
+  forceSubscription: boolean;
+  tickSize: number;
+  tickValue: number;
+  baseCurrency: string | null;
+  quoteCurrency: string | null;
+  category: string | null;
+}
+
+// ── Volumetrica Validation response shapes ───────────────────────────────
+
+interface VolRequestValidationResult {
+  success: boolean;
+  errors: Record<string, string | null> | null;
+}
+
+// ── Volumetrica Trading Token response shapes ────────────────────────────
+
+interface VolLoginTradingTokenResult {
+  tradingWssEndpoint: string | null;
+  tradingWssToken: string | null;
+  tradingRestReportHost: string | null;
+  tradingRestReportToken: string | null;
+  tradingRestTokenExpiration: number;
+  tradingApiVersion: number;
+}
+
+interface VolLoginDataTradingTokenResult {
+  tradingWssEndpoint: string | null;
+  tradingWssToken: string | null;
+  tradingRestReportHost: string | null;
+  tradingRestReportToken: string | null;
+  tradingRestTokenExpiration: number;
+  tradingApiVersion: number;
+  dataRealtimeEndpoint: string | null;
+  dataToken: string | null;
+  dataIpfEndpoint: string | null;
+  dataExchanges: string[] | null;
+}
+
+// ── Volumetrica Webhook response shapes ──────────────────────────────────
+
+interface VolWebhookEventViewModel {
+  dtUtc: string;
+  category: number;
+  event: number;
+  userId: string | null;
+  accountId: string | null;
+  tradingAccount: Record<string, unknown> | null;
+  tradingPosition: Record<string, unknown> | null;
+  subscription: Record<string, unknown> | null;
+  tradeReport: Record<string, unknown> | null;
+  tradingPortfolio: Record<string, unknown> | null;
+  organizationUser: Record<string, unknown> | null;
+}
+
+interface VolWebhookBulkViewModel {
+  id: string | null;
+  data: VolWebhookEventViewModel;
+}
+
+/** DataTable wrapper for TradingAccount/List */
+interface VolAccountHeaderListResult {
+  draw: number;
+  recordsTotal: number;
+  recordsFiltered: number;
+  data: VolAccountHeader[] | null;
+}
+
+/** DataTable wrapper for User/List */
+interface VolUserListResult {
+  draw: number;
+  recordsTotal: number;
+  recordsFiltered: number;
+  data: VolUserViewModel[] | null;
+}
+
 // ── Enum maps ─────────────────────────────────────────────────────────────
 
 const ACCOUNT_STATUS_MAP: Record<number, string> = {
@@ -503,6 +700,48 @@ const REVERSE_SUBSCRIPTION_PLATFORM: Record<string, number> = {
 const REVERSE_ORDER_POSITION_FILTER: Record<string, number> = {
   All: 0, Buy: 1, Sell: 2, Winner: 3, Loser: 4,
 };
+
+const REVERSE_ACCOUNT_MODE: Record<string, number> = {
+  Evaluation: 0, SimFunded: 1, Funded: 2, Live: 3, Trial: 4, Contest: 5, Training: 100,
+};
+
+const RATE_FREQUENCY_MAP: Record<number, string> = {
+  0: 'Manually', 1: 'Daily', 2: 'Weekly', 3: 'Monthly',
+};
+
+const UNIT_VALUE_TYPE_MAP: Record<number, string> = {
+  0: 'Absolute', 1: 'Percentual',
+};
+
+const NEWS_INTENSITY_MAP: Record<number, string> = {
+  1: 'Info', 2: 'Low', 4: 'Medium', 8: 'High',
+};
+
+const REVERSE_NEWS_INTENSITY: Record<string, number> = {
+  Info: 1, Low: 2, Medium: 4, High: 8,
+};
+
+const PRODUCT_TYPE_MAP: Record<number, string> = {
+  [-1]: 'Universal', 0: 'Future', 1: 'Stocks', 2: 'Options', 3: 'CFD', 4: 'Crypto',
+};
+
+const SYMBOL_ALLOWED_MODE_MAP: Record<number, string> = {
+  0: 'SymbolsListed', 1: 'Exchanges', 2: 'All',
+};
+
+const WEBHOOK_CATEGORY_MAP: Record<number, string> = {
+  0: 'Accounts', 1: 'OvernightPositions', 2: 'Subscriptions',
+  3: 'TradeReport', 4: 'Portfolio', 5: 'OrganizationUser',
+};
+
+const WEBHOOK_EVENT_MAP: Record<number, string> = {
+  0: 'Created', 1: 'Updated', 2: 'Deleted', 3: 'Overnight',
+};
+
+// Build reverse currency map from CURRENCY_MAP
+const REVERSE_CURRENCY: Record<string, number> = Object.fromEntries(
+  Object.entries(CURRENCY_MAP).map(([k, v]) => [v, Number(k)]),
+);
 
 // ── Volumetrica TradingRule response shapes ─────────────────────────────────
 
@@ -859,55 +1098,9 @@ export class VolumetricaProvider implements TradingPlatformProvider {
   ): Promise<PlatformTradingRuleResult> {
     logger.info({ name: params.name }, 'Volumetrica: creating trading rule');
 
-    const body: Record<string, unknown> = {
-      description: params.name,
-      organizationReferenceId: params.organizationReferenceId,
-      // Max drawdown (total)
-      maxDrawdownMode: params.maxDrawdownMode,
-      maxDrawdownMoney: params.maxDrawdownMoney,
-      maxDrawdownPercentual: 0,
-      maxDrawdownSelection: 0, // Highest
-      maxDrawdownAction: params.maxDrawdownAction,
-      maxDrawdownTrailingMode: params.maxDrawdownMode === 0 ? 0 : undefined, // Continuous when trailing
-      // Intraday (daily) drawdown
-      maxIntradayDrawdownMode: 1, // StaticStartBalance — daily loss from session start
-      maxIntradayDrawdownMoney: params.intradayMaxDrawdownMoney,
-      maxIntradayDrawdownPercentual: 0,
-      maxIntradayDrawdownSelection: 0, // Highest
-      maxIntradayDrawdownAction: params.intradayMaxDrawdownAction,
-      // Min trading days
-      minSessionNumbers: params.minSessionNumbers ?? 0,
-      // Overnight/weekend
-      failOnOvernight: false,
-      failOnOverweekend: params.overweekendAction !== undefined && params.overweekendAction !== 0,
-    };
-
-    // Profit target (only for evaluation phases)
-    if (params.profitTargetMoney !== undefined && params.profitTargetMoney > 0) {
-      body['profitTargetAction'] = params.profitTargetAction ?? 0;
-      body['profitTargetCalculation'] = 0; // Profit mode
-      body['profitTargetMoney'] = params.profitTargetMoney;
-      body['profitTargetPercentual'] = 0;
-      body['profitTargetSelection'] = 0; // Highest
-      body['profitTargetSituation'] = 2; // NoneOrdersAndPositions
-    }
-
-    // Consistency rule
-    if (params.consistencyPercentual !== undefined && params.consistencyPercentual > 0) {
-      body['consistencyAction'] = 1; // Enable
-      body['consistencyMode'] = 1; // BestTradingDayTargetRatio
-      body['consistencyPercentual'] = params.consistencyPercentual;
-    }
-
-    // News restriction
-    if (params.newsRestrictionAction !== undefined && params.newsRestrictionAction > 0) {
-      body['tradingNewsAction'] = params.newsRestrictionAction;
-      body['tradingNewsWindowSeconds'] = 120; // 2 min window around events
-    }
-
     const result = await this.client.post<VolTradingRuleResult>(
       `${API}/TradingRule`,
-      body,
+      this.buildTradingRuleBody(params),
     );
 
     return this.mapTradingRule(result);
@@ -1481,6 +1674,324 @@ export class VolumetricaProvider implements TradingPlatformProvider {
     };
   }
 
+  // ── Account / User Listing ─────────────────────────────────────────────
+
+  async listAccounts(
+    params?: ListAccountsParams,
+  ): Promise<ListAccountsResult> {
+    logger.info('Volumetrica: listing accounts');
+    const result = await this.client.get<VolAccountHeaderListResult>(
+      `${API}/TradingAccount/List`,
+      {
+        ...(params?.mode && { mode: REVERSE_ACCOUNT_MODE[params.mode] }),
+        ...(params?.status && { status: REVERSE_ACCOUNT_STATUS[params.status] }),
+        ...(params?.permission && { permission: REVERSE_TRADING_PERMISSION[params.permission] }),
+        ...(params?.familyId && { familyId: params.familyId }),
+        ...(params?.groupUniverseId && { groupUniverseId: params.groupUniverseId }),
+        ...(params?.tradingRuleId && { tradingRuleId: params.tradingRuleId }),
+        ...(params?.filter && { filter: params.filter }),
+        ...(params?.skip !== undefined && { skip: params.skip }),
+        ...(params?.take !== undefined && { take: params.take }),
+      },
+    );
+    return {
+      total: result.recordsTotal,
+      filtered: result.recordsFiltered,
+      accounts: (result.data ?? []).map((a) => this.mapAccountHeader(a)),
+    };
+  }
+
+  async listUsers(
+    params?: ListUsersParams,
+  ): Promise<ListUsersResult> {
+    logger.info('Volumetrica: listing users');
+    const result = await this.client.get<VolUserListResult>(
+      `${API}/User/List`,
+      {
+        ...(params?.userType !== undefined && { userType: params.userType }),
+        ...(params?.organizationStatus !== undefined && { organizationStatus: params.organizationStatus }),
+        ...(params?.subscriptionStatus && { subscriptionStatus: REVERSE_SUBSCRIPTION_STATUS[params.subscriptionStatus] }),
+        ...(params?.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+        ...(params?.filter && { filter: params.filter }),
+        ...(params?.skip !== undefined && { skip: params.skip }),
+        ...(params?.take !== undefined && { take: params.take }),
+      },
+    );
+    return {
+      total: result.recordsTotal,
+      filtered: result.recordsFiltered,
+      users: (result.data ?? []).map((u) => this.mapUserViewModel(u)),
+    };
+  }
+
+  // ── Currency Rates ────────────────────────────────────────────────────
+
+  async getCurrencyRates(): Promise<PlatformCurrencyRate[]> {
+    logger.info('Volumetrica: fetching currency rates');
+    const rates = await this.client.get<VolCurrencyRateElement[]>(
+      `${API}/CurrencyRates`,
+    );
+    return rates.map((r) => this.mapCurrencyRate(r));
+  }
+
+  async updateCurrencyRates(rates: UpdateCurrencyRateParams[]): Promise<void> {
+    logger.info('Volumetrica: updating currency rates');
+    const body = rates.map((r) => ({
+      baseCurrency: REVERSE_CURRENCY[r.baseCurrency] ?? 1,
+      conversionCurrency: REVERSE_CURRENCY[r.conversionCurrency] ?? 1,
+      ...(r.frequencyUpdate !== undefined && { frequencyUpdate: r.frequencyUpdate }),
+      ...(r.exchangeRate !== undefined && { exchangeRate: r.exchangeRate }),
+      ...(r.spreadType !== undefined && { spreadType: r.spreadType }),
+      ...(r.spread !== undefined && { spread: r.spread }),
+    }));
+    await this.client.post(`${API}/CurrencyRates`, body as unknown as Record<string, unknown>);
+  }
+
+  // ── Economic News ─────────────────────────────────────────────────────
+
+  async getEconomicNews(): Promise<PlatformEconomicNewsEvent[]> {
+    logger.info('Volumetrica: fetching economic news');
+    const events = await this.client.get<VolEconomicCalendarEvent[]>(
+      `${API}/EconomicNews`,
+    );
+    return events.map((e) => this.mapEconomicNewsEvent(e));
+  }
+
+  async updateEconomicNewsInhibit(params: UpdateEconomicNewsParams): Promise<void> {
+    logger.info('Volumetrica: updating economic news inhibit');
+    await this.client.post(`${API}/EconomicNews`, {
+      resetAll: params.resetAll,
+      events: params.events.map((e) => ({
+        eventId: e.eventId,
+        utcUnixMs: e.utcUnixMs,
+        ...(e.description && { description: e.description }),
+        ...(e.countryIso && { countryIso: e.countryIso }),
+        intensity: REVERSE_NEWS_INTENSITY[e.intensity] ?? e.eventId,
+        inhibit: e.inhibit,
+      })),
+    });
+  }
+
+  // ── Export ─────────────────────────────────────────────────────────────
+
+  async exportTradeListCsv(params: ExportTradeListParams): Promise<string> {
+    logger.info('Volumetrica: exporting trade list CSV');
+    // CSV endpoint returns raw text, not JSON — use get and let the client
+    // attempt JSON parse. The endpoint actually returns a string wrapped in
+    // the standard { success, data } envelope where data is the CSV string.
+    return this.client.get<string>(`${API}/Export/TradeListCsv`, {
+      startDt: params.startDt.toISOString(),
+      ...(params.endDt && { endDt: params.endDt.toISOString() }),
+      ...(params.rawPositions !== undefined && { rawPositions: params.rawPositions }),
+    });
+  }
+
+  // ── Group Universe ────────────────────────────────────────────────────
+
+  async listGroupUniverses(
+    params?: ListGroupUniversesParams,
+  ): Promise<ListGroupUniversesResult> {
+    logger.info('Volumetrica: listing group universes');
+    const result = await this.client.get<VolGroupUniverseListResult>(
+      `${API}/GroupUniverse/List`,
+      {
+        ...(params?.filter && { filter: params.filter }),
+        ...(params?.skip !== undefined && { skip: params.skip }),
+        ...(params?.take !== undefined && { take: params.take }),
+      },
+    );
+    return {
+      total: result.recordsTotal,
+      filtered: result.recordsFiltered,
+      groupUniverses: (result.data ?? []).map((g) => this.mapGroupUniverse(g)),
+    };
+  }
+
+  async getGroupUniverse(
+    groupId: string,
+    reference?: string,
+  ): Promise<PlatformGroupUniverseResult> {
+    logger.info({ groupId }, 'Volumetrica: getting group universe');
+    const result = await this.client.get<VolGroupUniverseResult>(
+      `${API}/GroupUniverse`,
+      {
+        groupId,
+        ...(reference && { reference: REVERSE_RULE_REFERENCE[reference] }),
+      },
+    );
+    return this.mapGroupUniverse(result);
+  }
+
+  async createGroupUniverse(
+    params: CreateGroupUniverseParams,
+  ): Promise<PlatformGroupUniverseResult> {
+    logger.info('Volumetrica: creating group universe');
+    const result = await this.client.post<VolGroupUniverseResult>(
+      `${API}/GroupUniverse`,
+      this.buildGroupUniverseBody(params),
+    );
+    return this.mapGroupUniverse(result);
+  }
+
+  async updateGroupUniverse(
+    groupId: string,
+    params: CreateGroupUniverseParams,
+    reference?: string,
+  ): Promise<PlatformGroupUniverseResult> {
+    logger.info({ groupId }, 'Volumetrica: updating group universe');
+    const result = await this.client.put<VolGroupUniverseResult>(
+      `${API}/GroupUniverse?id=${encodeURIComponent(groupId)}${reference ? `&reference=${REVERSE_RULE_REFERENCE[reference]}` : ''}`,
+      this.buildGroupUniverseBody(params),
+    );
+    return this.mapGroupUniverse(result);
+  }
+
+  // ── Symbols ───────────────────────────────────────────────────────────
+
+  async listSymbols(): Promise<PlatformSymbolInfo[]> {
+    logger.info('Volumetrica: listing symbols');
+    const symbols = await this.client.get<VolSymbolInfoViewModel[]>(
+      `${API}/Symbol/List`,
+    );
+    return symbols.map((s) => this.mapSymbolInfo(s));
+  }
+
+  async getContractName(contractId: number): Promise<string> {
+    return this.client.get<string>(`${API}/Symbol/ContractName`, { contractId });
+  }
+
+  async getSymbolName(contractId: number): Promise<string> {
+    return this.client.get<string>(`${API}/Symbol/SymbolName`, { contractId });
+  }
+
+  // ── Trading Rule Updates ──────────────────────────────────────────────
+
+  async updateTradingRule(
+    ruleId: string,
+    params: CreatePlatformTradingRuleParams,
+    reference?: string,
+  ): Promise<PlatformTradingRuleResult> {
+    logger.info({ ruleId }, 'Volumetrica: updating trading rule');
+    const body = this.buildTradingRuleBody(params);
+    const result = await this.client.put<VolTradingRuleResult>(
+      `${API}/TradingRule?id=${encodeURIComponent(ruleId)}${reference ? `&reference=${REVERSE_RULE_REFERENCE[reference]}` : ''}`,
+      body,
+    );
+    return this.mapTradingRule(result);
+  }
+
+  async validateTradingRule(
+    params: CreatePlatformTradingRuleParams,
+  ): Promise<PlatformValidationResult> {
+    logger.info('Volumetrica: validating trading rule');
+    const body = this.buildTradingRuleBody(params);
+    const result = await this.client.post<VolRequestValidationResult>(
+      `${API}/TradingRule/Validate`,
+      body,
+    );
+    const errors: Record<string, string> | undefined = result.errors
+      ? Object.fromEntries(
+          Object.entries(result.errors).filter(
+            (entry): entry is [string, string] => entry[1] !== null,
+          ),
+        )
+      : undefined;
+    return {
+      valid: result.success,
+      errors: errors && Object.keys(errors).length > 0 ? errors : undefined,
+    };
+  }
+
+  async changeTradingRuleGroupUniverse(
+    params: ChangeTradingRuleGroupUniverseParams,
+  ): Promise<void> {
+    logger.info({ ruleId: params.ruleId }, 'Volumetrica: changing trading rule group universe');
+    await this.client.post(`${API}/TradingRule/ChangeGroupUniverse`, {
+      ruleId: params.ruleId,
+      ...(params.ruleReference && { tradingRuleReference: REVERSE_RULE_REFERENCE[params.ruleReference] }),
+      groupId: params.groupId,
+      ...(params.groupUniverseReference && { groupUniverseReference: REVERSE_RULE_REFERENCE[params.groupUniverseReference] }),
+    });
+  }
+
+  async duplicateTradingRule(
+    params: DuplicateTradingRuleParams,
+  ): Promise<PlatformTradingRuleResult> {
+    logger.info({ ruleId: params.ruleId }, 'Volumetrica: duplicating trading rule');
+    const result = await this.client.post<VolTradingRuleResult>(
+      `${API}/TradingRule/Duplicate`,
+      {
+        ruleId: params.ruleId,
+        ...(params.ruleReference && { tradingRuleReference: REVERSE_RULE_REFERENCE[params.ruleReference] }),
+        ...(params.newOrganizationRuleId && { newOrganizationRuleId: params.newOrganizationRuleId }),
+        ...(params.newDescription && { newDescription: params.newDescription }),
+      },
+    );
+    return this.mapTradingRule(result);
+  }
+
+  // ── Trading Token / WSS ───────────────────────────────────────────────
+
+  async generateTradingToken(
+    params: GenerateTradingTokenParams,
+  ): Promise<PlatformTradingTokenResult> {
+    logger.info('Volumetrica: generating trading token');
+    const result = await this.client.post<VolLoginTradingTokenResult>(
+      `${API}/User/GenerateTradingToken`,
+      {
+        login: params.login,
+        password: params.password,
+        ...(params.version !== undefined && { version: params.version }),
+        ...(params.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+      },
+    );
+    return this.mapTradingToken(result);
+  }
+
+  async authTradingWss(
+    params: AuthTradingWssParams,
+  ): Promise<PlatformTradingWssAuthResult> {
+    logger.info('Volumetrica: authenticating trading WSS');
+    const result = await this.client.post<VolLoginDataTradingTokenResult>(
+      `${API}/User/AuthTradingWss`,
+      {
+        userId: params.userId,
+        ...(params.platform && { platform: REVERSE_SUBSCRIPTION_PLATFORM[params.platform] }),
+        ...(params.onlyTrading !== undefined && { onlyTrading: params.onlyTrading }),
+        ...(params.ip && { ip: params.ip }),
+        ...(params.version !== undefined && { version: params.version }),
+      },
+    );
+    return {
+      ...this.mapTradingToken(result),
+      dataRealtimeEndpoint: result.dataRealtimeEndpoint ?? undefined,
+      dataToken: result.dataToken ?? undefined,
+      dataIpfEndpoint: result.dataIpfEndpoint ?? undefined,
+      dataExchanges: result.dataExchanges ?? undefined,
+    };
+  }
+
+  // ── Webhook Reference ─────────────────────────────────────────────────
+
+  async getWebhookModel(): Promise<PlatformWebhookEvent> {
+    logger.info('Volumetrica: fetching webhook model');
+    const result = await this.client.get<VolWebhookEventViewModel>(
+      `${API}/Webhook/GetModel`,
+    );
+    return this.mapWebhookEvent(result);
+  }
+
+  async getWebhookBulkModel(): Promise<PlatformWebhookBulkEvent[]> {
+    logger.info('Volumetrica: fetching bulk webhook model');
+    const result = await this.client.get<VolWebhookBulkViewModel[]>(
+      `${API}/Webhook/GetBulkModel`,
+    );
+    return result.map((item) => ({
+      id: item.id ?? undefined,
+      data: this.mapWebhookEvent(item.data),
+    }));
+  }
+
   // ── Mapping Helpers ───────────────────────────────────────────────────
 
   private mapUserViewModel(user: VolUserViewModel): PlatformUserResult {
@@ -1726,6 +2237,202 @@ export class VolumetricaProvider implements TradingPlatformProvider {
       success: r.success,
       errorMessage: r.errorMessage ?? undefined,
       errorCode: r.errorCode !== 0 ? r.errorCode : undefined,
+    };
+  }
+
+  private mapCurrencyRate(r: VolCurrencyRateElement): PlatformCurrencyRate {
+    return {
+      baseCurrency: CURRENCY_MAP[r.baseCurrency] ?? String(r.baseCurrency),
+      conversionCurrency: CURRENCY_MAP[r.conversionCurrency] ?? String(r.conversionCurrency),
+      frequencyUpdate: RATE_FREQUENCY_MAP[r.frequencyUpdate] ?? String(r.frequencyUpdate),
+      exchangeRate: r.exchangeRate,
+      spreadType: UNIT_VALUE_TYPE_MAP[r.spreadType] ?? String(r.spreadType),
+      spread: r.spread,
+      lastUpdate: new Date(r.lastUpdate),
+    };
+  }
+
+  private mapEconomicNewsEvent(e: VolEconomicCalendarEvent): PlatformEconomicNewsEvent {
+    return {
+      eventId: e.eventId,
+      utcUnixMs: e.utcUnixMs,
+      description: e.description ?? undefined,
+      countryIso: e.countryIso ?? undefined,
+      intensity: NEWS_INTENSITY_MAP[e.intensity] ?? String(e.intensity),
+      inhibit: e.inhibit,
+    };
+  }
+
+  private mapGroupUniverse(g: VolGroupUniverseResult): PlatformGroupUniverseResult {
+    return {
+      groupId: g.groupId ?? '',
+      description: g.description ?? undefined,
+      organizationReferenceId: g.organizationReferenceId ?? undefined,
+      productType: PRODUCT_TYPE_MAP[g.productType] ?? String(g.productType),
+      symbolAllowedMode: SYMBOL_ALLOWED_MODE_MAP[g.symbolAllowedMode] ?? String(g.symbolAllowedMode),
+      excludeSymbolsNotListed: g.excludeSymbolsNotListed,
+      inhibitTradeCopier: g.inhibitTradeCopier,
+      exchanges: g.exchanges?.map((e) => this.mapGroupUniverseExchange(e)),
+      symbols: g.symbols?.map((s) => this.mapGroupUniverseSymbol(s)),
+      symbolGroups: g.symbolGroups?.map((sg) => this.mapGroupUniverseSymbolGroup(sg)),
+      borrowSymbols: g.borrowSymbols ?? undefined,
+    };
+  }
+
+  private mapGroupUniverseExchange(e: VolBaseGroupUniverseExchange): PlatformGroupUniverseExchange {
+    return {
+      exchangeId: e.exchangeId,
+      commissionsMode: e.commissionsMode ?? undefined,
+      commissions: e.commissions,
+      makerCommissions: e.makerCommissions ?? undefined,
+      minContractsCalculation: e.minContractsCalculation ?? undefined,
+      minContractsValue: e.minContractsValue ?? undefined,
+      multipleContracts: e.multipleContracts ?? undefined,
+      minMoneyExpositionUnit: e.minMoneyExpositionUnit ?? undefined,
+      minMoneyExpositionValue: e.minMoneyExpositionValue ?? undefined,
+      maxMoneyExpositionUnit: e.maxMoneyExpositionUnit ?? undefined,
+      maxMoneyExpositionValue: e.maxMoneyExpositionValue ?? undefined,
+      leverage: e.leverage ?? undefined,
+    };
+  }
+
+  private mapGroupUniverseSymbol(s: VolBaseGroupUniverseSymbol): PlatformGroupUniverseSymbol {
+    return {
+      symbolId: s.symbolId,
+      margin: s.margin ?? undefined,
+      commissions: s.commissions ?? undefined,
+      makerCommissions: s.makerCommissions ?? undefined,
+      maxContracts: s.maxContracts ?? undefined,
+      maxMoneyExposition: s.maxMoneyExposition ?? undefined,
+      leverage: s.leverage ?? undefined,
+    };
+  }
+
+  private mapGroupUniverseSymbolGroup(sg: VolBaseGroupUniverseSymbolGroup): PlatformGroupUniverseSymbolGroup {
+    return {
+      symbolGroupId: sg.symbolGroupId ?? undefined,
+      margin: sg.margin ?? undefined,
+      commissions: sg.commissions ?? undefined,
+      maxContractsSumMode: sg.maxContractsSumMode ?? undefined,
+      maxContractsCalculation: sg.maxContractsCalculation ?? undefined,
+      maxContractsValue: sg.maxContractsValue ?? undefined,
+    };
+  }
+
+  private buildGroupUniverseBody(params: CreateGroupUniverseParams): Record<string, unknown> {
+    return {
+      ...(params.groupId && { groupId: params.groupId }),
+      ...(params.description && { description: params.description }),
+      ...(params.organizationReferenceId && { organizationReferenceId: params.organizationReferenceId }),
+      productType: params.productType,
+      symbolAllowedMode: params.symbolAllowedMode,
+      ...(params.commissionsMode !== undefined && { commissionsMode: params.commissionsMode }),
+      ...(params.commissionsCharge !== undefined && { commissionsCharge: params.commissionsCharge }),
+      ...(params.defaultCommissions !== undefined && { defaultCommissions: params.defaultCommissions }),
+      ...(params.minOrderCommissions !== undefined && { minOrderCommissions: params.minOrderCommissions }),
+      ...(params.maxOrderCommissions !== undefined && { maxOrderCommissions: params.maxOrderCommissions }),
+      ...(params.maxOrdersAccountCount !== undefined && { maxOrdersAccountCount: params.maxOrdersAccountCount }),
+      ...(params.maxOrdersSymbolCount !== undefined && { maxOrdersSymbolCount: params.maxOrdersSymbolCount }),
+      ...(params.economicNewsCountries && { economicNewsCountries: params.economicNewsCountries }),
+      ...(params.inhibitTradeCopier !== undefined && { inhibitTradeCopier: params.inhibitTradeCopier }),
+      ...(params.intradayLiquidationMinsBefore !== undefined && { intradayLiquidationMinsBefore: params.intradayLiquidationMinsBefore }),
+      ...(params.exchanges && { exchanges: params.exchanges }),
+      ...(params.symbols && { symbols: params.symbols }),
+      ...(params.symbolGroups && { symbolGroups: params.symbolGroups }),
+      ...(params.borrowSymbols && { borrowSymbols: params.borrowSymbols }),
+    };
+  }
+
+  private mapSymbolInfo(s: VolSymbolInfoViewModel): PlatformSymbolInfo {
+    return {
+      id: s.id,
+      name: s.name ?? undefined,
+      description: s.description ?? undefined,
+      exchange: s.exchange ?? undefined,
+      symbolGroup: s.symbolGroup ?? undefined,
+      margin: s.margin,
+      commission: s.commission,
+      inhibitTrading: s.inhibitTrading,
+      archived: s.archived,
+      adv14D: s.adv14D ?? undefined,
+      adv50D: s.adv50D ?? undefined,
+      adc14D: s.adc14D ?? undefined,
+      forceSubscription: s.forceSubscription,
+      tickSize: s.tickSize,
+      tickValue: s.tickValue,
+      baseCurrency: s.baseCurrency ?? undefined,
+      quoteCurrency: s.quoteCurrency ?? undefined,
+      category: s.category ?? undefined,
+    };
+  }
+
+  private buildTradingRuleBody(params: CreatePlatformTradingRuleParams): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      description: params.name,
+      organizationReferenceId: params.organizationReferenceId,
+      maxDrawdownMode: params.maxDrawdownMode,
+      maxDrawdownMoney: params.maxDrawdownMoney,
+      maxDrawdownPercentual: 0,
+      maxDrawdownSelection: 0,
+      maxDrawdownAction: params.maxDrawdownAction,
+      maxDrawdownTrailingMode: params.maxDrawdownMode === 0 ? 0 : undefined,
+      maxIntradayDrawdownMode: 1,
+      maxIntradayDrawdownMoney: params.intradayMaxDrawdownMoney,
+      maxIntradayDrawdownPercentual: 0,
+      maxIntradayDrawdownSelection: 0,
+      maxIntradayDrawdownAction: params.intradayMaxDrawdownAction,
+      minSessionNumbers: params.minSessionNumbers ?? 0,
+      failOnOvernight: false,
+      failOnOverweekend: params.overweekendAction !== undefined && params.overweekendAction !== 0,
+    };
+
+    if (params.profitTargetMoney !== undefined && params.profitTargetMoney > 0) {
+      body['profitTargetAction'] = params.profitTargetAction ?? 0;
+      body['profitTargetCalculation'] = 0;
+      body['profitTargetMoney'] = params.profitTargetMoney;
+      body['profitTargetPercentual'] = 0;
+      body['profitTargetSelection'] = 0;
+      body['profitTargetSituation'] = 2;
+    }
+
+    if (params.consistencyPercentual !== undefined && params.consistencyPercentual > 0) {
+      body['consistencyAction'] = 1;
+      body['consistencyMode'] = 1;
+      body['consistencyPercentual'] = params.consistencyPercentual;
+    }
+
+    if (params.newsRestrictionAction !== undefined && params.newsRestrictionAction > 0) {
+      body['tradingNewsAction'] = params.newsRestrictionAction;
+      body['tradingNewsWindowSeconds'] = 120;
+    }
+
+    return body;
+  }
+
+  private mapTradingToken(t: VolLoginTradingTokenResult): PlatformTradingTokenResult {
+    return {
+      wssEndpoint: t.tradingWssEndpoint ?? undefined,
+      wssToken: t.tradingWssToken ?? undefined,
+      restReportHost: t.tradingRestReportHost ?? undefined,
+      restReportToken: t.tradingRestReportToken ?? undefined,
+      restTokenExpiration: t.tradingRestTokenExpiration,
+      tradingApiVersion: t.tradingApiVersion,
+    };
+  }
+
+  private mapWebhookEvent(e: VolWebhookEventViewModel): PlatformWebhookEvent {
+    return {
+      occurredAt: new Date(e.dtUtc),
+      category: WEBHOOK_CATEGORY_MAP[e.category] ?? String(e.category),
+      event: WEBHOOK_EVENT_MAP[e.event] ?? String(e.event),
+      userId: e.userId ?? undefined,
+      accountId: e.accountId ?? undefined,
+      tradingAccount: e.tradingAccount ?? undefined,
+      tradingPosition: e.tradingPosition ?? undefined,
+      subscription: e.subscription ?? undefined,
+      tradeReport: e.tradeReport ?? undefined,
+      tradingPortfolio: e.tradingPortfolio ?? undefined,
+      organizationUser: e.organizationUser ?? undefined,
     };
   }
 

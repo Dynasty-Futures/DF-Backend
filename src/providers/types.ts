@@ -562,3 +562,292 @@ export interface PlatformBulkEnableDisableResult {
   errorMessage?: string | undefined;
   errorCode?: number | undefined;
 }
+
+// ── Account Listing ──────────────────────────────────────────────────────
+
+export type AccountMode =
+  | 'Evaluation'
+  | 'SimFunded'
+  | 'Funded'
+  | 'Live'
+  | 'Trial'
+  | 'Contest'
+  | 'Training';
+
+export interface ListAccountsParams {
+  mode?: AccountMode | undefined;
+  status?: AccountStatus | undefined;
+  permission?: TradingPermission | undefined;
+  familyId?: string | undefined;
+  groupUniverseId?: string | undefined;
+  tradingRuleId?: string | undefined;
+  filter?: string | undefined;
+  skip?: number | undefined;
+  take?: number | undefined;
+}
+
+export interface ListAccountsResult {
+  total: number;
+  filtered: number;
+  accounts: PlatformAccountHeader[];
+}
+
+// ── User Listing ─────────────────────────────────────────────────────────
+
+export interface ListUsersParams {
+  /** Platform user type enum (numeric) */
+  userType?: number | undefined;
+  /** Organization status enum (numeric) */
+  organizationStatus?: number | undefined;
+  subscriptionStatus?: SubscriptionStatus | undefined;
+  platform?: SubscriptionPlatform | undefined;
+  filter?: string | undefined;
+  skip?: number | undefined;
+  take?: number | undefined;
+}
+
+export interface ListUsersResult {
+  total: number;
+  filtered: number;
+  users: PlatformUserResult[];
+}
+
+// ── Currency Rates ───────────────────────────────────────────────────────
+
+export interface PlatformCurrencyRate {
+  baseCurrency: string;
+  conversionCurrency: string;
+  frequencyUpdate: string;
+  exchangeRate: number;
+  spreadType: string;
+  spread: number;
+  lastUpdate: Date;
+}
+
+export interface UpdateCurrencyRateParams {
+  baseCurrency: string;
+  conversionCurrency: string;
+  /** 0=Manually, 1=Daily, 2=Weekly, 3=Monthly */
+  frequencyUpdate?: number | undefined;
+  exchangeRate?: number | undefined;
+  /** 0=Absolute, 1=Percentual */
+  spreadType?: number | undefined;
+  spread?: number | undefined;
+}
+
+// ── Economic News ────────────────────────────────────────────────────────
+
+export interface PlatformEconomicNewsEvent {
+  eventId: number;
+  utcUnixMs: number;
+  description?: string | undefined;
+  countryIso?: string | undefined;
+  /** 'Info' | 'Low' | 'Medium' | 'High' */
+  intensity: string;
+  inhibit: boolean;
+}
+
+export interface UpdateEconomicNewsParams {
+  resetAll: boolean;
+  events: PlatformEconomicNewsEvent[];
+}
+
+// ── Export ────────────────────────────────────────────────────────────────
+
+export interface ExportTradeListParams {
+  startDt: Date;
+  endDt?: Date | undefined;
+  rawPositions?: boolean | undefined;
+}
+
+// ── Group Universe ───────────────────────────────────────────────────────
+
+export interface PlatformGroupUniverseExchange {
+  exchangeId: number;
+  commissionsMode?: number | undefined;
+  commissions: number;
+  makerCommissions?: number | undefined;
+  minContractsCalculation?: number | undefined;
+  minContractsValue?: number | undefined;
+  multipleContracts?: number | undefined;
+  minMoneyExpositionUnit?: number | undefined;
+  minMoneyExpositionValue?: number | undefined;
+  maxMoneyExpositionUnit?: number | undefined;
+  maxMoneyExpositionValue?: number | undefined;
+  leverage?: number | undefined;
+}
+
+export interface PlatformGroupUniverseSymbol {
+  symbolId: number;
+  margin?: number | undefined;
+  commissions?: number | undefined;
+  makerCommissions?: number | undefined;
+  maxContracts?: number | undefined;
+  maxMoneyExposition?: number | undefined;
+  leverage?: number | undefined;
+}
+
+export interface PlatformGroupUniverseSymbolGroup {
+  symbolGroupId?: string | undefined;
+  margin?: number | undefined;
+  commissions?: number | undefined;
+  maxContractsSumMode?: number | undefined;
+  maxContractsCalculation?: number | undefined;
+  maxContractsValue?: number | undefined;
+}
+
+export interface PlatformGroupUniverseResult {
+  groupId: string;
+  description?: string | undefined;
+  organizationReferenceId?: string | undefined;
+  productType: string;
+  symbolAllowedMode: string;
+  excludeSymbolsNotListed: boolean;
+  inhibitTradeCopier: boolean;
+  exchanges?: PlatformGroupUniverseExchange[] | undefined;
+  symbols?: PlatformGroupUniverseSymbol[] | undefined;
+  symbolGroups?: PlatformGroupUniverseSymbolGroup[] | undefined;
+  borrowSymbols?: number[] | undefined;
+}
+
+export interface CreateGroupUniverseParams {
+  groupId?: string | undefined;
+  description?: string | undefined;
+  organizationReferenceId?: string | undefined;
+  /** 0=Future, 1=Stocks, 2=Options, 3=CFD, 4=Crypto, -1=Universal */
+  productType: number;
+  /** 0=SymbolsListed, 1=Exchanges, 2=All */
+  symbolAllowedMode: number;
+  /** 0=Quantity, 1=Order, 2=PercentualCountervalue */
+  commissionsMode?: number | undefined;
+  /** 0=EntryAndExit, 1=EntryOnly, 2=ExitOnly */
+  commissionsCharge?: number | undefined;
+  defaultCommissions?: number | undefined;
+  minOrderCommissions?: number | undefined;
+  maxOrderCommissions?: number | undefined;
+  maxOrdersAccountCount?: number | undefined;
+  maxOrdersSymbolCount?: number | undefined;
+  economicNewsCountries?: string | undefined;
+  inhibitTradeCopier?: boolean | undefined;
+  intradayLiquidationMinsBefore?: number | undefined;
+  exchanges?: PlatformGroupUniverseExchange[] | undefined;
+  symbols?: PlatformGroupUniverseSymbol[] | undefined;
+  symbolGroups?: PlatformGroupUniverseSymbolGroup[] | undefined;
+  borrowSymbols?: number[] | undefined;
+}
+
+export interface ListGroupUniversesParams {
+  filter?: string | undefined;
+  skip?: number | undefined;
+  take?: number | undefined;
+}
+
+export interface ListGroupUniversesResult {
+  total: number;
+  filtered: number;
+  groupUniverses: PlatformGroupUniverseResult[];
+}
+
+// ── Symbols ──────────────────────────────────────────────────────────────
+
+export interface PlatformSymbolInfo {
+  id: number;
+  name?: string | undefined;
+  description?: string | undefined;
+  exchange?: string | undefined;
+  symbolGroup?: string | undefined;
+  margin: number;
+  commission: number;
+  inhibitTrading: boolean;
+  archived: boolean;
+  adv14D?: number | undefined;
+  adv50D?: number | undefined;
+  adc14D?: number | undefined;
+  forceSubscription: boolean;
+  tickSize: number;
+  tickValue: number;
+  baseCurrency?: string | undefined;
+  quoteCurrency?: string | undefined;
+  category?: string | undefined;
+}
+
+// ── Trading Rule Updates ─────────────────────────────────────────────────
+
+export interface PlatformValidationResult {
+  valid: boolean;
+  errors?: Record<string, string> | undefined;
+}
+
+export interface DuplicateTradingRuleParams {
+  ruleId: string;
+  ruleReference?: RuleReference | undefined;
+  newOrganizationRuleId?: string | undefined;
+  newDescription?: string | undefined;
+}
+
+export interface ChangeTradingRuleGroupUniverseParams {
+  ruleId: string;
+  ruleReference?: RuleReference | undefined;
+  groupId: string;
+  groupUniverseReference?: RuleReference | undefined;
+}
+
+// ── Trading Token / WSS ──────────────────────────────────────────────────
+
+export interface GenerateTradingTokenParams {
+  login: string;
+  password: string;
+  version?: number | undefined;
+  platform?: SubscriptionPlatform | undefined;
+}
+
+export interface PlatformTradingTokenResult {
+  wssEndpoint?: string | undefined;
+  wssToken?: string | undefined;
+  restReportHost?: string | undefined;
+  restReportToken?: string | undefined;
+  restTokenExpiration: number;
+  tradingApiVersion: number;
+}
+
+export interface AuthTradingWssParams {
+  userId: string;
+  platform?: SubscriptionPlatform | undefined;
+  onlyTrading?: boolean | undefined;
+  ip?: string | undefined;
+  version?: number | undefined;
+}
+
+export interface PlatformTradingWssAuthResult {
+  wssEndpoint?: string | undefined;
+  wssToken?: string | undefined;
+  restReportHost?: string | undefined;
+  restReportToken?: string | undefined;
+  restTokenExpiration: number;
+  tradingApiVersion: number;
+  dataRealtimeEndpoint?: string | undefined;
+  dataToken?: string | undefined;
+  dataIpfEndpoint?: string | undefined;
+  dataExchanges?: string[] | undefined;
+}
+
+// ── Webhook ──────────────────────────────────────────────────────────────
+
+export interface PlatformWebhookEvent {
+  occurredAt: Date;
+  category: string;
+  event: string;
+  userId?: string | undefined;
+  accountId?: string | undefined;
+  tradingAccount?: Record<string, unknown> | undefined;
+  tradingPosition?: Record<string, unknown> | undefined;
+  subscription?: Record<string, unknown> | undefined;
+  tradeReport?: Record<string, unknown> | undefined;
+  tradingPortfolio?: Record<string, unknown> | undefined;
+  organizationUser?: Record<string, unknown> | undefined;
+}
+
+export interface PlatformWebhookBulkEvent {
+  id?: string | undefined;
+  data: PlatformWebhookEvent;
+}

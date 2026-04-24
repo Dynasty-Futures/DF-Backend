@@ -925,3 +925,666 @@ describe('bulkDeactivateSubscriptions', () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+// ── listAccounts ──────────────────────────────────────────────────────────
+
+describe('listAccounts', () => {
+  it('calls correct API path with no params', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 0, recordsFiltered: 0, data: [] });
+    await provider.listAccounts();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/TradingAccount/List', {});
+  });
+
+  it('includes all filter params with enum conversion', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 1, recordsFiltered: 1, data: [makeVolAccountHeader()] });
+    await provider.listAccounts({
+      mode: 'Evaluation',
+      status: 'Enabled',
+      permission: 'Trading',
+      familyId: 'fam-1',
+      groupUniverseId: 'gu-1',
+      tradingRuleId: 'rule-1',
+      filter: 'test',
+      skip: 0,
+      take: 10,
+    });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/TradingAccount/List', {
+      mode: 0,
+      status: 1,
+      permission: 0,
+      familyId: 'fam-1',
+      groupUniverseId: 'gu-1',
+      tradingRuleId: 'rule-1',
+      filter: 'test',
+      skip: 0,
+      take: 10,
+    });
+  });
+
+  it('maps response to ListAccountsResult', async () => {
+    mockGet.mockResolvedValue({
+      draw: 1, recordsTotal: 5, recordsFiltered: 3,
+      data: [makeVolAccountHeader()],
+    });
+    const result = await provider.listAccounts();
+    expect(result.total).toBe(5);
+    expect(result.filtered).toBe(3);
+    expect(result.accounts).toHaveLength(1);
+    expect(result.accounts[0]!.platformAccountId).toBe('acc-123');
+  });
+
+  it('handles null data array', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 0, recordsFiltered: 0, data: null });
+    const result = await provider.listAccounts();
+    expect(result.accounts).toEqual([]);
+  });
+});
+
+// ── listUsers ─────────────────────────────────────────────────────────────
+
+const makeVolUser = (overrides: Record<string, unknown> = {}) => ({
+  id: 'user-1',
+  organizationStatus: 1,
+  userName: 'testuser',
+  email: 'test@test.com',
+  firstName: 'Test',
+  lastName: 'User',
+  mobilePhone: '+1234567890',
+  address: '123 Main St',
+  postalCode: '12345',
+  city: 'New York',
+  state: 'NY',
+  country: 'US',
+  fiscalCode: null,
+  birthday: '1990-01-01T00:00:00Z',
+  nodeIndex: 0,
+  webAccessDisabled: false,
+  culture: null,
+  theme: null,
+  creationUtc: '2026-01-01T00:00:00Z',
+  updateUtc: '2026-01-15T00:00:00Z',
+  overrideWebPlatform: false,
+  userType: 0,
+  systemAccess: null,
+  extEntityId: 'ext-1',
+  wssAllowedIP: null,
+  ...overrides,
+});
+
+describe('listUsers', () => {
+  it('calls correct API path with no params', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 0, recordsFiltered: 0, data: [] });
+    await provider.listUsers();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/User/List', {});
+  });
+
+  it('includes filters when provided', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 1, recordsFiltered: 1, data: [makeVolUser()] });
+    await provider.listUsers({
+      userType: 0,
+      organizationStatus: 1,
+      subscriptionStatus: 'Active',
+      platform: 'QUANTOWER',
+      filter: 'test',
+      skip: 0,
+      take: 25,
+    });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/User/List', {
+      userType: 0,
+      organizationStatus: 1,
+      subscriptionStatus: 1,
+      platform: 1,
+      filter: 'test',
+      skip: 0,
+      take: 25,
+    });
+  });
+
+  it('maps response to ListUsersResult', async () => {
+    mockGet.mockResolvedValue({
+      draw: 1, recordsTotal: 10, recordsFiltered: 5,
+      data: [makeVolUser()],
+    });
+    const result = await provider.listUsers();
+    expect(result.total).toBe(10);
+    expect(result.filtered).toBe(5);
+    expect(result.users).toHaveLength(1);
+    expect(result.users[0]!.platformUserId).toBe('user-1');
+    expect(result.users[0]!.email).toBe('test@test.com');
+  });
+});
+
+// ── getCurrencyRates ──────────────────────────────────────────────────────
+
+describe('getCurrencyRates', () => {
+  it('calls correct API path and maps response', async () => {
+    mockGet.mockResolvedValue([
+      { baseCurrency: 1, conversionCurrency: 0, frequencyUpdate: 1, exchangeRate: 0.92, spreadType: 0, spread: 0.001, lastUpdate: '2026-03-01T00:00:00Z' },
+    ]);
+    const result = await provider.getCurrencyRates();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/CurrencyRates');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.baseCurrency).toBe('USD');
+    expect(result[0]!.conversionCurrency).toBe('EUR');
+    expect(result[0]!.frequencyUpdate).toBe('Daily');
+    expect(result[0]!.exchangeRate).toBe(0.92);
+    expect(result[0]!.spreadType).toBe('Absolute');
+    expect(result[0]!.lastUpdate).toBeInstanceOf(Date);
+  });
+});
+
+// ── updateCurrencyRates ───────────────────────────────────────────────────
+
+describe('updateCurrencyRates', () => {
+  it('sends correct body with currency enum conversion', async () => {
+    mockPost.mockResolvedValue(undefined);
+    await provider.updateCurrencyRates([
+      { baseCurrency: 'USD', conversionCurrency: 'EUR', exchangeRate: 0.93 },
+    ]);
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/CurrencyRates', [
+      { baseCurrency: 1, conversionCurrency: 0, exchangeRate: 0.93 },
+    ]);
+  });
+});
+
+// ── getEconomicNews ───────────────────────────────────────────────────────
+
+describe('getEconomicNews', () => {
+  it('calls correct API path and maps response', async () => {
+    mockGet.mockResolvedValue([
+      { eventId: 1, utcUnixMs: 1700000000000, description: 'CPI Release', countryIso: 'US', intensity: 8, inhibit: true },
+    ]);
+    const result = await provider.getEconomicNews();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/EconomicNews');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.eventId).toBe(1);
+    expect(result[0]!.intensity).toBe('High');
+    expect(result[0]!.inhibit).toBe(true);
+    expect(result[0]!.description).toBe('CPI Release');
+    expect(result[0]!.countryIso).toBe('US');
+  });
+
+  it('maps null description and countryIso to undefined', async () => {
+    mockGet.mockResolvedValue([
+      { eventId: 2, utcUnixMs: 1700000000000, description: null, countryIso: null, intensity: 1, inhibit: false },
+    ]);
+    const result = await provider.getEconomicNews();
+    expect(result[0]!.description).toBeUndefined();
+    expect(result[0]!.countryIso).toBeUndefined();
+    expect(result[0]!.intensity).toBe('Info');
+  });
+});
+
+// ── updateEconomicNewsInhibit ─────────────────────────────────────────────
+
+describe('updateEconomicNewsInhibit', () => {
+  it('sends correct body', async () => {
+    mockPost.mockResolvedValue(undefined);
+    await provider.updateEconomicNewsInhibit({
+      resetAll: false,
+      events: [{ eventId: 1, utcUnixMs: 1700000000000, intensity: 'High', inhibit: true }],
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/EconomicNews', {
+      resetAll: false,
+      events: [{ eventId: 1, utcUnixMs: 1700000000000, intensity: 8, inhibit: true }],
+    });
+  });
+});
+
+// ── exportTradeListCsv ────────────────────────────────────────────────────
+
+describe('exportTradeListCsv', () => {
+  it('calls correct API path with required params', async () => {
+    mockGet.mockResolvedValue('tradeId,symbol,side\n1,ESZ4,BUY');
+    const start = new Date('2026-03-01T00:00:00Z');
+    const result = await provider.exportTradeListCsv({ startDt: start });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Export/TradeListCsv', {
+      startDt: start.toISOString(),
+    });
+    expect(result).toContain('tradeId');
+  });
+
+  it('includes optional params', async () => {
+    mockGet.mockResolvedValue('csv-data');
+    const start = new Date('2026-03-01T00:00:00Z');
+    const end = new Date('2026-03-02T00:00:00Z');
+    await provider.exportTradeListCsv({ startDt: start, endDt: end, rawPositions: true });
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Export/TradeListCsv', {
+      startDt: start.toISOString(),
+      endDt: end.toISOString(),
+      rawPositions: true,
+    });
+  });
+});
+
+// ── listGroupUniverses ────────────────────────────────────────────────────
+
+const makeVolGroupUniverse = (overrides: Record<string, unknown> = {}) => ({
+  groupId: 'gu-1',
+  description: 'Futures Group',
+  organizationReferenceId: 'org-ref-1',
+  productType: 0,
+  symbolAllowedMode: 0,
+  excludeSymbolsNotListed: false,
+  inhibitTradeCopier: false,
+  exchanges: null,
+  symbols: null,
+  symbolGroups: null,
+  borrowSymbols: null,
+  ...overrides,
+});
+
+describe('listGroupUniverses', () => {
+  it('calls correct API path with no params', async () => {
+    mockGet.mockResolvedValue({ draw: 0, recordsTotal: 0, recordsFiltered: 0, data: [] });
+    await provider.listGroupUniverses();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/GroupUniverse/List', {});
+  });
+
+  it('maps response to ListGroupUniversesResult', async () => {
+    mockGet.mockResolvedValue({
+      draw: 1, recordsTotal: 3, recordsFiltered: 2,
+      data: [makeVolGroupUniverse()],
+    });
+    const result = await provider.listGroupUniverses({ filter: 'test', skip: 0, take: 10 });
+    expect(result.total).toBe(3);
+    expect(result.filtered).toBe(2);
+    expect(result.groupUniverses).toHaveLength(1);
+    expect(result.groupUniverses[0]!.groupId).toBe('gu-1');
+    expect(result.groupUniverses[0]!.productType).toBe('Future');
+    expect(result.groupUniverses[0]!.symbolAllowedMode).toBe('SymbolsListed');
+  });
+});
+
+// ── getGroupUniverse ──────────────────────────────────────────────────────
+
+describe('getGroupUniverse', () => {
+  it('calls correct API path with groupId', async () => {
+    mockGet.mockResolvedValue(makeVolGroupUniverse());
+    await provider.getGroupUniverse('gu-1');
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/GroupUniverse', { groupId: 'gu-1' });
+  });
+
+  it('maps nested exchanges, symbols, and symbolGroups', async () => {
+    mockGet.mockResolvedValue(makeVolGroupUniverse({
+      exchanges: [{ exchangeId: 1, commissionsMode: 0, commissions: 2.5, makerCommissions: null, minContractsCalculation: null, minContractsValue: null, multipleContracts: null, minMoneyExpositionUnit: null, minMoneyExpositionValue: null, maxMoneyExpositionUnit: null, maxMoneyExpositionValue: null, leverage: null }],
+      symbols: [{ symbolId: 100, margin: 500, commissions: 1.5, makerCommissions: null, maxContracts: 10, maxMoneyExposition: null, leverage: null }],
+      symbolGroups: [{ symbolGroupId: 'sg-1', margin: 1000, commissions: null, maxContractsSumMode: null, maxContractsCalculation: null, maxContractsValue: null }],
+      borrowSymbols: [200, 300],
+    }));
+    const result = await provider.getGroupUniverse('gu-1');
+    expect(result.exchanges).toHaveLength(1);
+    expect(result.exchanges![0]!.exchangeId).toBe(1);
+    expect(result.exchanges![0]!.commissions).toBe(2.5);
+    expect(result.exchanges![0]!.makerCommissions).toBeUndefined();
+    expect(result.symbols).toHaveLength(1);
+    expect(result.symbols![0]!.symbolId).toBe(100);
+    expect(result.symbols![0]!.margin).toBe(500);
+    expect(result.symbolGroups).toHaveLength(1);
+    expect(result.symbolGroups![0]!.symbolGroupId).toBe('sg-1');
+    expect(result.borrowSymbols).toEqual([200, 300]);
+  });
+});
+
+// ── createGroupUniverse ───────────────────────────────────────────────────
+
+describe('createGroupUniverse', () => {
+  it('sends correct body with required params', async () => {
+    mockPost.mockResolvedValue(makeVolGroupUniverse());
+    await provider.createGroupUniverse({
+      description: 'New Group',
+      productType: 0,
+      symbolAllowedMode: 2,
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/GroupUniverse', {
+      description: 'New Group',
+      productType: 0,
+      symbolAllowedMode: 2,
+    });
+  });
+
+  it('returns mapped PlatformGroupUniverseResult', async () => {
+    mockPost.mockResolvedValue(makeVolGroupUniverse());
+    const result = await provider.createGroupUniverse({ productType: 0, symbolAllowedMode: 0 });
+    expect(result.groupId).toBe('gu-1');
+    expect(result.productType).toBe('Future');
+  });
+});
+
+// ── updateGroupUniverse ───────────────────────────────────────────────────
+
+describe('updateGroupUniverse', () => {
+  it('calls PUT with groupId in query string', async () => {
+    mockPut.mockResolvedValue(makeVolGroupUniverse());
+    await provider.updateGroupUniverse('gu-1', {
+      description: 'Updated',
+      productType: 0,
+      symbolAllowedMode: 1,
+    });
+    expect(mockPut).toHaveBeenCalledWith(
+      '/api/v2/Propsite/GroupUniverse?id=gu-1',
+      { description: 'Updated', productType: 0, symbolAllowedMode: 1 },
+    );
+  });
+});
+
+// ── listSymbols ───────────────────────────────────────────────────────────
+
+const makeVolSymbol = (overrides: Record<string, unknown> = {}) => ({
+  id: 1,
+  name: 'ESZ4',
+  description: 'E-mini S&P 500',
+  exchange: 'CME',
+  symbolGroup: 'Indices',
+  margin: 500,
+  commission: 2.5,
+  inhibitTrading: false,
+  archived: false,
+  adv14D: 1000000,
+  adv50D: null,
+  adc14D: null,
+  forceSubscription: false,
+  tickSize: 0.25,
+  tickValue: 12.5,
+  baseCurrency: 'USD',
+  quoteCurrency: null,
+  category: 'Futures',
+  ...overrides,
+});
+
+describe('listSymbols', () => {
+  it('calls correct API path and maps response', async () => {
+    mockGet.mockResolvedValue([makeVolSymbol()]);
+    const result = await provider.listSymbols();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Symbol/List');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(1);
+    expect(result[0]!.name).toBe('ESZ4');
+    expect(result[0]!.exchange).toBe('CME');
+    expect(result[0]!.tickSize).toBe(0.25);
+    expect(result[0]!.tickValue).toBe(12.5);
+    expect(result[0]!.adv50D).toBeUndefined();
+    expect(result[0]!.quoteCurrency).toBeUndefined();
+  });
+});
+
+// ── getContractName / getSymbolName ───────────────────────────────────────
+
+describe('getContractName', () => {
+  it('calls correct API path with contractId', async () => {
+    mockGet.mockResolvedValue('ESZ4');
+    const result = await provider.getContractName(100);
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Symbol/ContractName', { contractId: 100 });
+    expect(result).toBe('ESZ4');
+  });
+});
+
+describe('getSymbolName', () => {
+  it('calls correct API path with contractId', async () => {
+    mockGet.mockResolvedValue('E-mini S&P 500');
+    const result = await provider.getSymbolName(100);
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Symbol/SymbolName', { contractId: 100 });
+    expect(result).toBe('E-mini S&P 500');
+  });
+});
+
+// ── updateTradingRule ─────────────────────────────────────────────────────
+
+describe('updateTradingRule', () => {
+  const makeRuleParams = () => ({
+    name: 'Standard 50K',
+    maxDrawdownMoney: 2500,
+    maxDrawdownMode: 0,
+    maxDrawdownAction: 1,
+    intradayMaxDrawdownMoney: 1250,
+    intradayMaxDrawdownAction: 1,
+  });
+
+  it('calls PUT with ruleId in query string', async () => {
+    mockPut.mockResolvedValue({ ruleId: 'rule-1', description: 'Standard 50K', organizationReferenceId: null });
+    await provider.updateTradingRule('rule-1', makeRuleParams());
+    expect(mockPut).toHaveBeenCalledWith(
+      '/api/v2/Propsite/TradingRule?id=rule-1',
+      expect.objectContaining({ description: 'Standard 50K' }),
+    );
+  });
+
+  it('returns mapped PlatformTradingRuleResult', async () => {
+    mockPut.mockResolvedValue({ ruleId: 'rule-1', description: 'Standard 50K', organizationReferenceId: 'ref-1' });
+    const result = await provider.updateTradingRule('rule-1', makeRuleParams());
+    expect(result.tradingRuleId).toBe('rule-1');
+    expect(result.name).toBe('Standard 50K');
+    expect(result.organizationReferenceId).toBe('ref-1');
+  });
+});
+
+// ── validateTradingRule ───────────────────────────────────────────────────
+
+describe('validateTradingRule', () => {
+  it('maps successful validation', async () => {
+    mockPost.mockResolvedValue({ success: true, errors: null });
+    const result = await provider.validateTradingRule({
+      name: 'Test',
+      maxDrawdownMoney: 2500,
+      maxDrawdownMode: 0,
+      maxDrawdownAction: 1,
+      intradayMaxDrawdownMoney: 1250,
+      intradayMaxDrawdownAction: 1,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toBeUndefined();
+  });
+
+  it('maps validation errors', async () => {
+    mockPost.mockResolvedValue({
+      success: false,
+      errors: { maxDrawdownMoney: 'Must be positive', extra: null },
+    });
+    const result = await provider.validateTradingRule({
+      name: 'Test',
+      maxDrawdownMoney: -1,
+      maxDrawdownMode: 0,
+      maxDrawdownAction: 1,
+      intradayMaxDrawdownMoney: 1250,
+      intradayMaxDrawdownAction: 1,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual({ maxDrawdownMoney: 'Must be positive' });
+  });
+});
+
+// ── changeTradingRuleGroupUniverse ────────────────────────────────────────
+
+describe('changeTradingRuleGroupUniverse', () => {
+  it('sends correct body with enum conversions', async () => {
+    mockPost.mockResolvedValue(undefined);
+    await provider.changeTradingRuleGroupUniverse({
+      ruleId: 'rule-1',
+      ruleReference: 'Organization',
+      groupId: 'gu-1',
+      groupUniverseReference: 'Application',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/TradingRule/ChangeGroupUniverse', {
+      ruleId: 'rule-1',
+      tradingRuleReference: 1,
+      groupId: 'gu-1',
+      groupUniverseReference: 0,
+    });
+  });
+
+  it('returns void', async () => {
+    mockPost.mockResolvedValue(undefined);
+    const result = await provider.changeTradingRuleGroupUniverse({
+      ruleId: 'rule-1',
+      groupId: 'gu-1',
+    });
+    expect(result).toBeUndefined();
+  });
+});
+
+// ── duplicateTradingRule ──────────────────────────────────────────────────
+
+describe('duplicateTradingRule', () => {
+  it('sends correct body', async () => {
+    mockPost.mockResolvedValue({ ruleId: 'rule-2', description: 'Copy of Standard 50K', organizationReferenceId: 'new-ref' });
+    await provider.duplicateTradingRule({
+      ruleId: 'rule-1',
+      ruleReference: 'Organization',
+      newOrganizationRuleId: 'new-ref',
+      newDescription: 'Copy of Standard 50K',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/TradingRule/Duplicate', {
+      ruleId: 'rule-1',
+      tradingRuleReference: 1,
+      newOrganizationRuleId: 'new-ref',
+      newDescription: 'Copy of Standard 50K',
+    });
+  });
+
+  it('returns mapped PlatformTradingRuleResult', async () => {
+    mockPost.mockResolvedValue({ ruleId: 'rule-2', description: 'Dup Rule', organizationReferenceId: null });
+    const result = await provider.duplicateTradingRule({ ruleId: 'rule-1' });
+    expect(result.tradingRuleId).toBe('rule-2');
+    expect(result.name).toBe('Dup Rule');
+  });
+});
+
+// ── generateTradingToken ──────────────────────────────────────────────────
+
+describe('generateTradingToken', () => {
+  it('calls correct API path with body', async () => {
+    mockPost.mockResolvedValue({
+      tradingWssEndpoint: 'wss://example.com',
+      tradingWssToken: 'token-123',
+      tradingRestReportHost: 'https://report.example.com',
+      tradingRestReportToken: 'rest-token',
+      tradingRestTokenExpiration: 3600,
+      tradingApiVersion: 2,
+    });
+    const result = await provider.generateTradingToken({
+      login: 'user@test.com',
+      password: 'pass123',
+      version: 2,
+      platform: 'VOLUMETRICA_TRADING',
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/User/GenerateTradingToken', {
+      login: 'user@test.com',
+      password: 'pass123',
+      version: 2,
+      platform: 0,
+    });
+    expect(result.wssEndpoint).toBe('wss://example.com');
+    expect(result.wssToken).toBe('token-123');
+    expect(result.tradingApiVersion).toBe(2);
+  });
+
+  it('maps null fields to undefined', async () => {
+    mockPost.mockResolvedValue({
+      tradingWssEndpoint: null, tradingWssToken: null,
+      tradingRestReportHost: null, tradingRestReportToken: null,
+      tradingRestTokenExpiration: 0, tradingApiVersion: 1,
+    });
+    const result = await provider.generateTradingToken({ login: 'u', password: 'p' });
+    expect(result.wssEndpoint).toBeUndefined();
+    expect(result.wssToken).toBeUndefined();
+    expect(result.restReportHost).toBeUndefined();
+    expect(result.restReportToken).toBeUndefined();
+  });
+});
+
+// ── authTradingWss ────────────────────────────────────────────────────────
+
+describe('authTradingWss', () => {
+  it('calls correct API path and includes data feed fields', async () => {
+    mockPost.mockResolvedValue({
+      tradingWssEndpoint: 'wss://trade.example.com',
+      tradingWssToken: 'wss-token',
+      tradingRestReportHost: null,
+      tradingRestReportToken: null,
+      tradingRestTokenExpiration: 7200,
+      tradingApiVersion: 2,
+      dataRealtimeEndpoint: 'wss://data.example.com',
+      dataToken: 'data-token',
+      dataIpfEndpoint: 'https://ipf.example.com',
+      dataExchanges: ['CME', 'CBOT'],
+    });
+    const result = await provider.authTradingWss({
+      userId: 'user-1',
+      platform: 'QUANTOWER',
+      onlyTrading: false,
+      ip: '1.2.3.4',
+      version: 2,
+    });
+    expect(mockPost).toHaveBeenCalledWith('/api/v2/Propsite/User/AuthTradingWss', {
+      userId: 'user-1',
+      platform: 1,
+      onlyTrading: false,
+      ip: '1.2.3.4',
+      version: 2,
+    });
+    expect(result.wssEndpoint).toBe('wss://trade.example.com');
+    expect(result.dataRealtimeEndpoint).toBe('wss://data.example.com');
+    expect(result.dataToken).toBe('data-token');
+    expect(result.dataExchanges).toEqual(['CME', 'CBOT']);
+  });
+});
+
+// ── getWebhookModel ───────────────────────────────────────────────────────
+
+describe('getWebhookModel', () => {
+  it('calls correct API path and maps response', async () => {
+    mockGet.mockResolvedValue({
+      dtUtc: '2026-03-01T10:00:00Z',
+      category: 0,
+      event: 1,
+      userId: 'user-1',
+      accountId: 'acc-1',
+      tradingAccount: { id: 'acc-1' },
+      tradingPosition: null,
+      subscription: null,
+      tradeReport: null,
+      tradingPortfolio: null,
+      organizationUser: null,
+    });
+    const result = await provider.getWebhookModel();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Webhook/GetModel');
+    expect(result.occurredAt).toBeInstanceOf(Date);
+    expect(result.category).toBe('Accounts');
+    expect(result.event).toBe('Updated');
+    expect(result.userId).toBe('user-1');
+    expect(result.tradingAccount).toEqual({ id: 'acc-1' });
+    expect(result.tradingPosition).toBeUndefined();
+  });
+});
+
+// ── getWebhookBulkModel ───────────────────────────────────────────────────
+
+describe('getWebhookBulkModel', () => {
+  it('calls correct API path and maps response', async () => {
+    mockGet.mockResolvedValue([
+      {
+        id: 'event-1',
+        data: {
+          dtUtc: '2026-03-01T10:00:00Z',
+          category: 2,
+          event: 0,
+          userId: null,
+          accountId: null,
+          tradingAccount: null,
+          tradingPosition: null,
+          subscription: { subscriptionId: 'sub-1' },
+          tradeReport: null,
+          tradingPortfolio: null,
+          organizationUser: null,
+        },
+      },
+    ]);
+    const result = await provider.getWebhookBulkModel();
+    expect(mockGet).toHaveBeenCalledWith('/api/v2/Propsite/Webhook/GetBulkModel');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe('event-1');
+    expect(result[0]!.data.category).toBe('Subscriptions');
+    expect(result[0]!.data.event).toBe('Created');
+    expect(result[0]!.data.subscription).toEqual({ subscriptionId: 'sub-1' });
+  });
+});
