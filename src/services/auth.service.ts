@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import type { StringValue } from 'ms';
@@ -25,6 +26,7 @@ import {
   createSession,
   findSessionByToken,
   deleteSession,
+  deleteAllUserSessions,
   updateLastLogin,
   incrementFailedAttempts,
   resetFailedAttempts,
@@ -70,14 +72,15 @@ export interface TokenPair {
 }
 
 /**
- * Generate a JWT access token.
+ * Generate a JWT access token bound to a specific session.
  */
-export const generateAccessToken = (user: SafeUser): string => {
+export const generateAccessToken = (user: SafeUser, sessionId: string): string => {
   const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
     sub: user.id,
     email: user.email,
     role: user.role,
     type: 'access',
+    sid: sessionId,
   };
 
   return jwt.sign(payload, config.jwt.secret, {
@@ -86,14 +89,15 @@ export const generateAccessToken = (user: SafeUser): string => {
 };
 
 /**
- * Generate a JWT refresh token (longer-lived).
+ * Generate a JWT refresh token bound to a specific session.
  */
-export const generateRefreshToken = (user: SafeUser): string => {
+export const generateRefreshToken = (user: SafeUser, sessionId: string): string => {
   const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
     sub: user.id,
     email: user.email,
     role: user.role,
     type: 'refresh',
+    sid: sessionId,
   };
 
   return jwt.sign(payload, config.jwt.secret, {
@@ -102,12 +106,12 @@ export const generateRefreshToken = (user: SafeUser): string => {
 };
 
 /**
- * Generate both access and refresh tokens for a user.
+ * Generate both access and refresh tokens for a user, both bound to the same session.
  */
-const generateTokenPair = (user: SafeUser): TokenPair => {
+const generateTokenPair = (user: SafeUser, sessionId: string): TokenPair => {
   return {
-    accessToken: generateAccessToken(user),
-    refreshToken: generateRefreshToken(user),
+    accessToken: generateAccessToken(user, sessionId),
+    refreshToken: generateRefreshToken(user, sessionId),
   };
 };
 
@@ -151,6 +155,8 @@ export interface RegisterInput {
   password: string;
   firstName: string;
   lastName: string;
+  ipAddress?: string | undefined;
+  userAgent?: string | undefined;
 }
 
 export interface AuthResult {
@@ -160,9 +166,12 @@ export interface AuthResult {
 
 /**
  * Register a new user with email/password.
+ *
+ * Single-session policy: brand-new accounts have no prior sessions, so we just
+ * create the first one. (No need to delete — there's nothing to delete.)
  */
 export const register = async (input: RegisterInput): Promise<AuthResult> => {
-  const { email, password, firstName, lastName } = input;
+  const { email, password, firstName, lastName, ipAddress, userAgent } = input;
 
   // Check if email is already taken
   const existing = await findUserByEmail(email);
@@ -183,8 +192,24 @@ export const register = async (input: RegisterInput): Promise<AuthResult> => {
 
   logger.info({ userId: user.id, email: user.email }, 'New user registered');
 
-  // Generate tokens
-  const tokens = generateTokenPair(user);
+  // Mint a session ID up-front so it can be embedded in tokens AND used as the
+  // Session row's PK. This keeps token.sid === Session.id, which is how the
+  // authenticate middleware enforces single-session-per-user.
+  const sessionId = randomUUID();
+  const tokens = generateTokenPair(user, sessionId);
+
+  const refreshExpiresAt = new Date(
+    Date.now() + parseDurationMs(config.jwt.refreshExpiresIn)
+  );
+
+  await createSession({
+    id: sessionId,
+    userId: user.id,
+    token: tokens.refreshToken,
+    ipAddress: ipAddress ?? null,
+    userAgent: userAgent ?? null,
+    expiresAt: refreshExpiresAt,
+  });
 
   return { user, tokens };
 };
@@ -275,15 +300,25 @@ export const login = async (input: LoginInput): Promise<AuthResult> => {
     updatedAt: user.updatedAt,
   };
 
-  // Generate tokens
-  const tokens = generateTokenPair(safeUser);
+  // Single-session-per-user: kick every prior session before issuing tokens.
+  // Any browser/tab still holding the old access token will 401 on its next
+  // authenticated request (authenticate middleware looks up Session by sid).
+  const evicted = await deleteAllUserSessions(user.id);
+  if (evicted > 0) {
+    logger.info({ userId: user.id, evicted }, 'Prior sessions evicted on new login');
+  }
 
-  // Store refresh token as a session
+  // Mint session ID up-front so it can be embedded in tokens AND used as the
+  // Session row's PK.
+  const sessionId = randomUUID();
+  const tokens = generateTokenPair(safeUser, sessionId);
+
   const refreshExpiresAt = new Date(
     Date.now() + parseDurationMs(config.jwt.refreshExpiresIn)
   );
 
   await createSession({
+    id: sessionId,
     userId: user.id,
     token: tokens.refreshToken,
     ipAddress: ipAddress ?? null,
@@ -400,15 +435,25 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResult> =>
   // Update last login
   await updateLastLogin(user.id, ipAddress);
 
-  // Generate tokens
-  const tokens = generateTokenPair(user);
+  // Single-session-per-user: kick every prior session before issuing tokens.
+  const evicted = await deleteAllUserSessions(user.id);
+  if (evicted > 0) {
+    logger.info(
+      { userId: user.id, evicted, provider: GOOGLE_PROVIDER },
+      'Prior sessions evicted on new login'
+    );
+  }
 
-  // Store refresh token as session
+  // Mint session ID up-front (used as both the Session row PK and the sid claim).
+  const sessionId = randomUUID();
+  const tokens = generateTokenPair(user, sessionId);
+
   const refreshExpiresAt = new Date(
     Date.now() + parseDurationMs(config.jwt.refreshExpiresIn)
   );
 
   await createSession({
+    id: sessionId,
     userId: user.id,
     token: tokens.refreshToken,
     ipAddress: ipAddress ?? null,
@@ -427,6 +472,10 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResult> =>
 
 /**
  * Issue a new access token using a valid refresh token.
+ *
+ * The new access token carries the same `sid` as the refresh token, so
+ * authenticated requests continue to be tied to the same Session row. If that
+ * row has been deleted (e.g., the user logged in elsewhere), this throws.
  */
 export const refreshAccessToken = async (
   refreshToken: string
@@ -438,9 +487,15 @@ export const refreshAccessToken = async (
     throw new InvalidTokenError('Expected a refresh token');
   }
 
-  // Check that the session still exists in the database
+  if (!decoded.sid) {
+    throw new InvalidTokenError('Refresh token is missing a session identifier');
+  }
+
+  // Check that the session still exists in the database. We look up by token
+  // (existing behavior) and additionally confirm the row's id matches the sid
+  // claim — guards against a token reuse where the row was replaced.
   const session = await findSessionByToken(refreshToken);
-  if (!session) {
+  if (!session || session.id !== decoded.sid) {
     throw new UnauthorizedError('Session has been revoked');
   }
 
@@ -461,8 +516,8 @@ export const refreshAccessToken = async (
     throw new AuthenticationError('Account is no longer active');
   }
 
-  // Issue new access token with fresh user data
-  const accessToken = generateAccessToken(user);
+  // Issue new access token with fresh user data, bound to the same session.
+  const accessToken = generateAccessToken(user, session.id);
 
   return { accessToken, user };
 };

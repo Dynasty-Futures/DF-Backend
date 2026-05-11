@@ -48,6 +48,9 @@ export interface CreateOAuthUserData extends CreateUserData {
 }
 
 export interface CreateSessionData {
+  /** Optional explicit ID — when caller wants to know the session ID before insert
+   *  (e.g., to embed it in a JWT). If omitted, Prisma generates a UUID. */
+  id?: string;
   userId: string;
   token: string;
   ipAddress?: string | null;
@@ -289,12 +292,22 @@ export const linkOAuthAccount = async (
 export const createSession = async (data: CreateSessionData): Promise<Session> => {
   return prisma.session.create({
     data: {
+      ...(data.id ? { id: data.id } : {}),
       userId: data.userId,
       token: data.token,
       ipAddress: data.ipAddress ?? null,
       userAgent: data.userAgent ?? null,
       expiresAt: data.expiresAt,
     },
+  });
+};
+
+/**
+ * Find a session by ID (the UUID embedded in access/refresh tokens as `sid`).
+ */
+export const findSessionById = async (id: string): Promise<Session | null> => {
+  return prisma.session.findUnique({
+    where: { id },
   });
 };
 

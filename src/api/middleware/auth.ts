@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { config } from '../../config/index.js';
 import { UnauthorizedError, ForbiddenError, TokenExpiredError, InvalidTokenError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import { findSessionById } from '../../repositories/auth.repository.js';
 
 // =============================================================================
 // Express Request Type Augmentation
@@ -31,6 +32,9 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   type: 'access' | 'refresh';
+  /** Session ID — identifies the Session row this token was issued for.
+   *  Used by `authenticate` to enforce single-session-per-user. */
+  sid: string;
   iat?: number;
   exp?: number;
 }
@@ -43,16 +47,20 @@ export interface JwtPayload {
  * Verifies the Bearer token from the Authorization header and attaches
  * the decoded user payload to `req.user`.
  *
+ * Also confirms the token's session (`sid`) still exists in the database.
+ * This enforces single-session-per-user: when a user logs in elsewhere,
+ * the prior session is deleted and the old token's next request 401s.
+ *
  * Throws:
- * - `UnauthorizedError` if no token is provided
+ * - `UnauthorizedError` if no token is provided or the session was invalidated
  * - `TokenExpiredError` if the token has expired
  * - `InvalidTokenError` if the token is malformed or invalid
  */
-export const authenticate = (
+export const authenticate = async (
   req: Request,
   _res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   try {
     const authHeader = req.headers['authorization'];
 
@@ -67,6 +75,17 @@ export const authenticate = (
     // Only accept access tokens (not refresh tokens)
     if (decoded.type !== 'access') {
       throw new InvalidTokenError('Expected an access token');
+    }
+
+    if (!decoded.sid) {
+      throw new InvalidTokenError('Access token is missing a session identifier');
+    }
+
+    // Enforce single-session-per-user: the session row must still exist.
+    // If a newer login on another browser deleted this session, fail here.
+    const session = await findSessionById(decoded.sid);
+    if (!session || session.userId !== decoded.sub) {
+      throw new UnauthorizedError('Session has been invalidated');
     }
 
     req.user = {
@@ -99,11 +118,11 @@ export const authenticate = (
  * If a valid token exists, `req.user` is populated; otherwise it stays undefined.
  * Useful for routes that work for both authenticated and anonymous users.
  */
-export const optionalAuthenticate = (
+export const optionalAuthenticate = async (
   req: Request,
   _res: Response,
   next: NextFunction
-): void => {
+): Promise<void> => {
   try {
     const authHeader = req.headers['authorization'];
 
@@ -116,12 +135,15 @@ export const optionalAuthenticate = (
 
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    if (decoded.type === 'access') {
-      req.user = {
-        id: decoded.sub,
-        email: decoded.email,
-        role: decoded.role,
-      };
+    if (decoded.type === 'access' && decoded.sid) {
+      const session = await findSessionById(decoded.sid);
+      if (session && session.userId === decoded.sub) {
+        req.user = {
+          id: decoded.sub,
+          email: decoded.email,
+          role: decoded.role,
+        };
+      }
     }
 
     next();
