@@ -30,7 +30,11 @@ export class AppError extends Error {
 
     // Maintains proper stack trace
     Error.captureStackTrace(this, this.constructor);
-    Object.setPrototypeOf(this, AppError.prototype);
+
+    // Use `new.target.prototype` so each subclass keeps its own prototype.
+    // The previous form (`AppError.prototype`) clobbered every subclass,
+    // making `instanceof UnauthorizedError` etc. always return false.
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 
   toJSON(): Record<string, unknown> {

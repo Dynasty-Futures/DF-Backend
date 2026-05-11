@@ -98,6 +98,8 @@ router.post(
         password,
         firstName,
         lastName,
+        ipAddress: req.ip ?? undefined,
+        userAgent: req.headers['user-agent'] ?? undefined,
       });
 
       logger.info(
