@@ -8,7 +8,7 @@
 
 import { config } from '../config/index.js';
 import type { TradingPlatformProvider } from './trading-platform.provider.js';
-import { VolumetricaProvider } from './volumetrica/volumetrica.provider.js';
+import { YPFProvider } from './ypf/ypf.provider.js';
 
 let _cached: TradingPlatformProvider | null = null;
 
@@ -18,8 +18,8 @@ export function getTradingPlatformProvider(): TradingPlatformProvider {
   const platform = config.tradingPlatform;
 
   switch (platform) {
-    case 'volumetrica':
-      _cached = new VolumetricaProvider();
+    case 'ypf':
+      _cached = new YPFProvider();
       break;
     default:
       throw new Error(`Unknown trading platform: ${platform}`);

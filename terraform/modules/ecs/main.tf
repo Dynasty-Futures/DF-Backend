@@ -257,7 +257,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "GOOGLE_CLIENT_SECRET", valueFrom = var.google_client_secret_arn },
         { name = "VOLUMETRICA_API_URL", valueFrom = var.volumetrica_api_url_arn },
         { name = "VOLUMETRICA_API_KEY", valueFrom = var.volumetrica_api_key_arn },
-        { name = "VOLUMETRICA_WEBHOOK_SECRET", valueFrom = var.volumetrica_webhook_secret_arn },
+        { name = "YPF_API_URL", valueFrom = var.ypf_api_url_arn },
+        { name = "YPF_CLIENT_KEY", valueFrom = var.ypf_client_key_arn },
       ]
 
       # Health check

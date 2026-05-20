@@ -150,9 +150,12 @@ jobs:
     # - TF_VAR_stripe_publishable_key: Stripe publishable key (pk_live_...)
     # - TF_VAR_google_client_id: Google OAuth client ID
     # - TF_VAR_google_client_secret: Google OAuth client secret
-    # - TF_VAR_volumetrica_api_url: Volumetrica API base URL
-    # - TF_VAR_volumetrica_api_key: Volumetrica API key
-    # - TF_VAR_volumetrica_webhook_secret: Volumetrica webhook shared secret
+    # - TF_VAR_volumetrica_api_url: Volumetrica API base URL (SSO only — management API moved to YPF)
+    # - TF_VAR_volumetrica_api_key: Volumetrica API key (SSO only)
+    #
+    # YPF secrets (YPF_API_URL, YPF_CLIENT_KEY) are managed out-of-band in
+    # AWS Secrets Manager and looked up by name via terraform data sources.
+    # No TF_VAR_* needed for them.
     #
     # Go to: Repository Settings -> Secrets and variables -> Actions -> New repository secret
 
@@ -166,7 +169,6 @@ jobs:
       TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
       TF_VAR_volumetrica_api_url: ${{ secrets.TF_VAR_VOLUMETRICA_API_URL }}
       TF_VAR_volumetrica_api_key: ${{ secrets.TF_VAR_VOLUMETRICA_API_KEY }}
-      TF_VAR_volumetrica_webhook_secret: ${{ secrets.TF_VAR_VOLUMETRICA_WEBHOOK_SECRET }}
 
     steps:
       - name: Checkout
@@ -274,7 +276,6 @@ jobs:
       TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
       TF_VAR_volumetrica_api_url: ${{ secrets.TF_VAR_VOLUMETRICA_API_URL }}
       TF_VAR_volumetrica_api_key: ${{ secrets.TF_VAR_VOLUMETRICA_API_KEY }}
-      TF_VAR_volumetrica_webhook_secret: ${{ secrets.TF_VAR_VOLUMETRICA_WEBHOOK_SECRET }}
 
     steps:
       - name: Checkout
@@ -334,7 +335,6 @@ jobs:
       TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
       TF_VAR_volumetrica_api_url: ${{ secrets.TF_VAR_VOLUMETRICA_API_URL }}
       TF_VAR_volumetrica_api_key: ${{ secrets.TF_VAR_VOLUMETRICA_API_KEY }}
-      TF_VAR_volumetrica_webhook_secret: ${{ secrets.TF_VAR_VOLUMETRICA_WEBHOOK_SECRET }}
 
     steps:
       - name: Checkout

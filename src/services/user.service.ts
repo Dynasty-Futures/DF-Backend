@@ -22,11 +22,7 @@ import {
 } from '../repositories/user.repository.js';
 import type { SafeUser } from '../repositories/auth.repository.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
-import type {
-  PlatformUserResult,
-  PlatformUserCreateResult,
-  PlatformInviteResult,
-} from '../providers/types.js';
+import type { PlatformUserResult } from '../providers/types.js';
 
 // =============================================================================
 // User Service
@@ -38,26 +34,18 @@ import type {
 // List / Get
 // =============================================================================
 
-/**
- * List users (admin only).
- */
 export const listUsers = async (
   filters: UserFilters = {},
-  pagination: UserPaginationOptions = { page: 1, limit: 20 }
+  pagination: UserPaginationOptions = { page: 1, limit: 20 },
 ): Promise<PaginatedResult<SafeUser>> => {
   return getUsers(filters, pagination);
 };
 
-/**
- * Get a user by ID.
- * If the requester is not an admin, they may only fetch their own profile.
- */
 export const getUser = async (
   targetUserId: string,
   requesterId: string,
-  requesterRole: UserRole
+  requesterRole: UserRole,
 ): Promise<SafeUser> => {
-  // Non-admins can only view themselves
   if (requesterRole !== UserRole.ADMIN && targetUserId !== requesterId) {
     throw new ForbiddenError('You can only view your own profile');
   }
@@ -74,14 +62,10 @@ export const getUser = async (
 // Self-Service Profile Update
 // =============================================================================
 
-/**
- * Update a user's own profile (firstName, lastName, phone).
- */
 export const updateProfile = async (
   userId: string,
-  data: UpdateUserProfileData
+  data: UpdateUserProfileData,
 ): Promise<SafeUser> => {
-  // Validate at least one field is being updated
   if (
     data.firstName === undefined &&
     data.lastName === undefined &&
@@ -104,20 +88,16 @@ export const updateProfile = async (
 // Admin: Role Change
 // =============================================================================
 
-/**
- * Change a user's role (admin only).
- */
 export const changeUserRole = async (
   targetUserId: string,
   newRole: UserRole,
-  adminId: string
+  adminId: string,
 ): Promise<SafeUser> => {
   const target = await getUserById(targetUserId);
   if (!target) {
     throw new NotFoundError(`User ${targetUserId} not found`);
   }
 
-  // Prevent admins from demoting themselves
   if (targetUserId === adminId && newRole !== UserRole.ADMIN) {
     throw new ForbiddenError('You cannot change your own role');
   }
@@ -132,13 +112,8 @@ export const changeUserRole = async (
   }
 
   logger.info(
-    {
-      targetUserId,
-      previousRole: target.role,
-      newRole,
-      adminId,
-    },
-    'User role changed by admin'
+    { targetUserId, previousRole: target.role, newRole, adminId },
+    'User role changed by admin',
   );
 
   return updated;
@@ -148,20 +123,16 @@ export const changeUserRole = async (
 // Admin: Status Change
 // =============================================================================
 
-/**
- * Change a user's status (admin only).
- */
 export const changeUserStatus = async (
   targetUserId: string,
   newStatus: UserStatus,
-  adminId: string
+  adminId: string,
 ): Promise<SafeUser> => {
   const target = await getUserById(targetUserId);
   if (!target) {
     throw new NotFoundError(`User ${targetUserId} not found`);
   }
 
-  // Prevent admins from suspending/banning themselves
   if (
     targetUserId === adminId &&
     (newStatus === UserStatus.SUSPENDED || newStatus === UserStatus.BANNED)
@@ -179,13 +150,8 @@ export const changeUserStatus = async (
   }
 
   logger.info(
-    {
-      targetUserId,
-      previousStatus: target.status,
-      newStatus,
-      adminId,
-    },
-    'User status changed by admin'
+    { targetUserId, previousStatus: target.status, newStatus, adminId },
+    'User status changed by admin',
   );
 
   return updated;
@@ -195,9 +161,6 @@ export const changeUserStatus = async (
 // Admin: Update User (general)
 // =============================================================================
 
-/**
- * Admin: update any user fields (profile + role + status).
- */
 export const adminUpdate = async (
   targetUserId: string,
   data: {
@@ -207,14 +170,13 @@ export const adminUpdate = async (
     role?: UserRole | undefined;
     status?: UserStatus | undefined;
   },
-  adminId: string
+  adminId: string,
 ): Promise<SafeUser> => {
   const target = await getUserById(targetUserId);
   if (!target) {
     throw new NotFoundError(`User ${targetUserId} not found`);
   }
 
-  // Safety checks when modifying own account
   if (targetUserId === adminId) {
     if (data.role !== undefined && data.role !== UserRole.ADMIN) {
       throw new ForbiddenError('You cannot change your own role');
@@ -233,12 +195,8 @@ export const adminUpdate = async (
   }
 
   logger.info(
-    {
-      targetUserId,
-      updates: Object.keys(data),
-      adminId,
-    },
-    'User updated by admin'
+    { targetUserId, updates: Object.keys(data), adminId },
+    'User updated by admin',
   );
 
   return updated;
@@ -248,12 +206,9 @@ export const adminUpdate = async (
 // Admin: Delete User (soft)
 // =============================================================================
 
-/**
- * Soft-delete a user (admin only).
- */
 export const deleteUser = async (
   targetUserId: string,
-  adminId: string
+  adminId: string,
 ): Promise<void> => {
   if (targetUserId === adminId) {
     throw new ForbiddenError('You cannot delete your own account');
@@ -271,9 +226,6 @@ export const deleteUser = async (
 // Stats
 // =============================================================================
 
-/**
- * Get user statistics (admin dashboard).
- */
 export const getStatistics = async () => {
   return getUserStats();
 };
@@ -281,16 +233,13 @@ export const getStatistics = async () => {
 // =============================================================================
 // Platform User Operations
 // =============================================================================
+// NOTE: YPF v1 does not expose user update or invite endpoints, so the
+// previous `syncUserToPlatform` and `invitePlatformUser` methods were removed.
+// User profile drift is one-way only now: local → never pushed back to YPF.
 
-/**
- * Create the user on the external trading platform and link the returned
- * `platformUserId` to the local User row.
- *
- * Throws ConflictError if the user is already linked.
- */
 export const createPlatformUser = async (
   userId: string,
-): Promise<PlatformUserCreateResult> => {
+): Promise<PlatformUserResult> => {
   const user = await prisma.user.findUnique({
     where: { id: userId, deletedAt: null },
   });
@@ -324,9 +273,6 @@ export const createPlatformUser = async (
   return result;
 };
 
-/**
- * Fetch the user's profile from the external trading platform.
- */
 export const getPlatformUser = async (
   userId: string,
 ): Promise<PlatformUserResult> => {
@@ -347,87 +293,6 @@ export const getPlatformUser = async (
   return provider.getUser(user.platformUserId);
 };
 
-/**
- * Push the local user profile to the trading platform (one-way sync outward).
- * Useful after a local profile update to keep the platform in sync.
- */
-export const syncUserToPlatform = async (
-  userId: string,
-): Promise<PlatformUserCreateResult> => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId, deletedAt: null },
-  });
-  if (!user) throw new NotFoundError(`User ${userId} not found`);
-
-  if (!user.platformUserId) {
-    throw new PlatformError(
-      'User is not linked to a trading platform',
-      {},
-      400,
-    );
-  }
-
-  const provider = getTradingPlatformProvider();
-
-  const result = await provider.updateUser(user.platformUserId, {
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    phone: user.phone ?? undefined,
-  });
-
-  logger.info(
-    { userId, platformUserId: user.platformUserId },
-    'User profile synced to trading platform',
-  );
-
-  return result;
-};
-
-/**
- * Invite the user to the trading platform organization. Creates a platform
- * user record and returns an invitation URL that the user must visit to
- * accept. Also links the `platformUserId` locally.
- */
-export const invitePlatformUser = async (
-  userId: string,
-): Promise<PlatformInviteResult> => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId, deletedAt: null },
-  });
-  if (!user) throw new NotFoundError(`User ${userId} not found`);
-
-  if (user.platformUserId) {
-    throw new ConflictError('User is already linked to a trading platform');
-  }
-
-  const provider = getTradingPlatformProvider();
-
-  const result = await provider.inviteUser({
-    country: 'US',
-    email: user.email,
-    externalId: user.id,
-  });
-
-  if (result.platformUserId) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { platformUserId: result.platformUserId },
-    });
-  }
-
-  logger.info(
-    { userId, platformUserId: result.platformUserId, status: result.status },
-    'User invited to trading platform',
-  );
-
-  return result;
-};
-
-/**
- * Unlink a user from the trading platform by clearing platformUserId.
- * Does NOT delete the user on the platform side.
- */
 export const unlinkPlatformUser = async (
   userId: string,
   adminId: string,

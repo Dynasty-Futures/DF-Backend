@@ -1,0 +1,542 @@
+// =============================================================================
+// YPF (YourPropFirm) Trading Platform Provider
+// =============================================================================
+// Implements TradingPlatformProvider against YPF Client API v1.
+// URL shape: nested `/users/{userId}/accounts/{accountId}` resources.
+// =============================================================================
+
+import { YPFClient } from './ypf.client.js';
+import type { TradingPlatformProvider } from '../trading-platform.provider.js';
+import type {
+  CreatePlatformUserParams,
+  PlatformUserResult,
+  CreatePlatformAccountParams,
+  PlatformAccountResult,
+  PlatformSnapshotResult,
+  PlatformTradeResult,
+  PlatformBreachResult,
+  PlatformProgramResult,
+  CreatePlatformPayoutParams,
+  PlatformPayoutResult,
+  ListPayoutsParams,
+  ListProgramsParams,
+} from '../types.js';
+
+// ── YPF raw response shapes (subset — only fields we map) ───────────────────
+
+interface YPFExtraValueEntry {
+  Key: string;
+  Value: string;
+}
+
+interface YPFAccountResponse {
+  id: string;
+  userId: string;
+  programId?: string;
+  email?: string;
+  firstname?: string;
+  lastname?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  tradeServer?: string;
+  login?: string;
+  password?: string;
+  balance?: number;
+  equity?: number;
+  drawDown?: number;
+  state?: string;
+  currency?: string;
+  extraValues?: YPFExtraValueEntry[];
+}
+
+interface YPFUserResponse {
+  id: string;
+  email?: string;
+  state?: string;
+  type?: string;
+  kycStatus?: string;
+  accountId?: string;
+  createdAt?: string;
+  updateAt?: string;
+  profile?: {
+    firstname?: string;
+    lastname?: string;
+    phone?: string;
+    address?: string;
+    zipCode?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+}
+
+interface YPFBreachResponse {
+  timestamp: string;
+  ruleId?: string;
+  ruleName: string;
+  ruleValue?: { value?: number; threshold?: number };
+  reasoning?: { reason?: string; raw?: unknown };
+  isSoftBreach?: boolean;
+}
+
+interface YPFProgramResponse {
+  id: string;
+  name: string;
+  description?: string;
+  currency: string;
+  initialBalance: number;
+  nextProgramId?: string;
+  isEnabled?: boolean;
+  isWithdrawalAllowed?: boolean;
+  createdAt?: string;
+}
+
+interface YPFPayoutResponse {
+  id: string;
+  userId: string;
+  accountId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  method?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const toDate = (s?: string): Date | undefined => (s ? new Date(s) : undefined);
+
+const flattenExtraValues = (
+  arr?: YPFExtraValueEntry[],
+): Record<string, string> | undefined => {
+  if (!arr || arr.length === 0) return undefined;
+  const out: Record<string, string> = {};
+  for (const entry of arr) {
+    if (entry?.Key) out[entry.Key] = entry.Value ?? '';
+  }
+  return out;
+};
+
+const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
+  const result: PlatformAccountResult = {
+    platformAccountId: a.id,
+    platformUserId: a.userId,
+    accountName: a.email ?? a.id,
+    status: a.state ?? 'Unknown',
+    balance: a.balance ?? 0,
+    startingBalance: a.balance ?? 0,
+    currency: a.currency ?? 'USD',
+  };
+  if (a.programId !== undefined) result.programId = a.programId;
+  if (a.equity !== undefined) result.equity = a.equity;
+  if (a.login && a.password) {
+    result.loginCredentials = { login: a.login, password: a.password };
+  }
+  const extras = flattenExtraValues(a.extraValues);
+  if (extras) result.extraValues = extras;
+  const created = toDate(a.createdAt);
+  if (created) result.createdAt = created;
+  const updated = toDate(a.updatedAt);
+  if (updated) result.updatedAt = updated;
+  return result;
+};
+
+const mapUser = (u: YPFUserResponse): PlatformUserResult => {
+  const result: PlatformUserResult = {
+    platformUserId: u.id,
+  };
+  if (u.email !== undefined) result.email = u.email;
+  if (u.profile?.firstname !== undefined) result.firstName = u.profile.firstname;
+  if (u.profile?.lastname !== undefined) result.lastName = u.profile.lastname;
+  if (u.profile?.phone !== undefined) result.phone = u.profile.phone;
+  if (u.profile?.address !== undefined) result.address = u.profile.address;
+  if (u.profile?.zipCode !== undefined) result.postalCode = u.profile.zipCode;
+  if (u.profile?.city !== undefined) result.city = u.profile.city;
+  if (u.profile?.state !== undefined) result.state = u.profile.state;
+  if (u.profile?.country !== undefined) result.country = u.profile.country;
+  const created = toDate(u.createdAt);
+  if (created) result.createdAt = created;
+  const updated = toDate(u.updateAt);
+  if (updated) result.updatedAt = updated;
+  return result;
+};
+
+const mapBreach = (
+  b: YPFBreachResponse,
+  platformAccountId: string,
+): PlatformBreachResult => {
+  const result: PlatformBreachResult = {
+    platformAccountId,
+    ruleName: b.ruleName,
+    severity: b.isSoftBreach ? 'soft' : 'hard',
+    reason: b.reasoning?.reason ?? b.ruleName,
+    occurredAt: new Date(b.timestamp),
+  };
+  if (b.ruleValue?.value !== undefined) result.triggeredValue = b.ruleValue.value;
+  if (b.ruleValue?.threshold !== undefined)
+    result.thresholdValue = b.ruleValue.threshold;
+  if (b.reasoning) result.raw = b.reasoning as Record<string, unknown>;
+  return result;
+};
+
+const mapProgram = (p: YPFProgramResponse): PlatformProgramResult => {
+  const result: PlatformProgramResult = {
+    programId: p.id,
+    name: p.name,
+    initialBalance: p.initialBalance,
+    currency: p.currency,
+    raw: p as unknown as Record<string, unknown>,
+  };
+  if (p.nextProgramId !== undefined) result.nextProgramId = p.nextProgramId;
+  return result;
+};
+
+const mapPayout = (p: YPFPayoutResponse): PlatformPayoutResult => {
+  const result: PlatformPayoutResult = {
+    platformPayoutId: p.id,
+    platformUserId: p.userId,
+    platformAccountId: p.accountId,
+    amount: p.amount,
+    currency: p.currency,
+    status: p.status,
+    method: p.method ?? 'unknown',
+  };
+  const created = toDate(p.createdAt);
+  if (created) result.createdAt = created;
+  const updated = toDate(p.updatedAt);
+  if (updated) result.updatedAt = updated;
+  return result;
+};
+
+// ── Provider ───────────────────────────────────────────────────────────────
+
+export class YPFProvider implements TradingPlatformProvider {
+  private readonly client: YPFClient;
+
+  constructor(client?: YPFClient) {
+    this.client = client ?? new YPFClient();
+  }
+
+  // ── User ─────────────────────────────────────────────────────────────────
+
+  async createUser(params: CreatePlatformUserParams): Promise<PlatformUserResult> {
+    const body: Record<string, unknown> = {
+      email: params.email,
+      firstname: params.firstName,
+      lastname: params.lastName,
+      country: params.country,
+      isRegisterUserOnly: true,
+    };
+    if (params.phone !== undefined) body['phone'] = params.phone;
+    if (params.address !== undefined) body['addressLine'] = params.address;
+    if (params.postalCode !== undefined) body['zipCode'] = params.postalCode;
+    if (params.city !== undefined) body['city'] = params.city;
+    if (params.language !== undefined) body['language'] = params.language;
+
+    const res = await this.client.post<YPFUserResponse>('/users', body);
+    return mapUser(res);
+  }
+
+  async getUser(platformUserId: string): Promise<PlatformUserResult> {
+    const res = await this.client.get<YPFUserResponse>(
+      `/users/${encodeURIComponent(platformUserId)}`,
+    );
+    return mapUser(res);
+  }
+
+  // ── Account Lifecycle ────────────────────────────────────────────────────
+
+  async createAccount(
+    params: CreatePlatformAccountParams,
+  ): Promise<PlatformAccountResult> {
+    if (!params.programId) {
+      throw new Error('YPF createAccount requires programId');
+    }
+    const body: Record<string, unknown> = {
+      programId: params.programId,
+    };
+    if (params.currency !== undefined) body['currency'] = params.currency;
+    if (params.tradeServer !== undefined) body['mtVersion'] = params.tradeServer;
+
+    const res = await this.client.post<YPFAccountResponse>(
+      `/users/${encodeURIComponent(params.platformUserId)}/accounts`,
+      body,
+    );
+    return mapAccount(res);
+  }
+
+  async getAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformAccountResult> {
+    const res = await this.client.get<YPFAccountResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}`,
+    );
+    return mapAccount(res);
+  }
+
+  async listUserAccounts(platformUserId: string): Promise<PlatformAccountResult[]> {
+    const res = await this.client.get<YPFAccountResponse[]>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts`,
+    );
+    return (res ?? []).map(mapAccount);
+  }
+
+  async blockAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<void> {
+    await this.client.del<void>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}`,
+    );
+  }
+
+  async resetAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformAccountResult> {
+    const res = await this.client.post<YPFAccountResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/checkout-reset/${encodeURIComponent(platformAccountId)}`,
+    );
+    return mapAccount(res);
+  }
+
+  async reactivateAccount(
+    platformUserId: string,
+    platformAccountId: string,
+    balanceSource?: 'initial' | 'last',
+  ): Promise<PlatformAccountResult> {
+    const body: Record<string, unknown> = {};
+    if (balanceSource !== undefined) body['balanceSource'] = balanceSource;
+    const res = await this.client.put<YPFAccountResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/reactivate`,
+      body,
+    );
+    return mapAccount(res);
+  }
+
+  async manualBreachAccount(
+    platformUserId: string,
+    platformAccountId: string,
+    ruleName: string,
+    reason?: string,
+  ): Promise<void> {
+    const body: Record<string, unknown> = { ruleName };
+    if (reason !== undefined) body['reason'] = reason;
+    await this.client.put<void>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/manualbreach`,
+      body,
+    );
+  }
+
+  async manualUpgradeAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformAccountResult> {
+    const res = await this.client.put<YPFAccountResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/manualupgrade`,
+    );
+    return mapAccount(res);
+  }
+
+  async updateAccountBalance(
+    platformUserId: string,
+    platformAccountId: string,
+    amount: number,
+  ): Promise<void> {
+    await this.client.put<void>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/balance`,
+      { amount },
+    );
+  }
+
+  // ── Data Retrieval ──────────────────────────────────────────────────────
+
+  async getDailySnapshots(
+    platformUserId: string,
+    platformAccountId: string,
+    startDt?: Date,
+  ): Promise<PlatformSnapshotResult[]> {
+    const query: Record<string, string> = {};
+    if (startDt) query['startDate'] = startDt.toISOString();
+    const res = await this.client.get<
+      Array<{
+        date: string;
+        openBalance?: number;
+        closeBalance?: number;
+        highBalance?: number;
+        lowBalance?: number;
+        dailyPnl?: number;
+        totalPnl?: number;
+        dailyDrawdown?: number;
+        currentDrawdown?: number;
+        tradesCount?: number;
+        winningTrades?: number;
+        losingTrades?: number;
+      }>
+    >(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/dailydrawdown`,
+      query,
+    );
+    return (res ?? []).map((s) => ({
+      platformAccountId,
+      date: new Date(s.date),
+      openBalance: s.openBalance ?? 0,
+      closeBalance: s.closeBalance ?? 0,
+      highBalance: s.highBalance ?? 0,
+      lowBalance: s.lowBalance ?? 0,
+      dailyPnl: s.dailyPnl ?? 0,
+      totalPnl: s.totalPnl ?? 0,
+      dailyDrawdown: s.dailyDrawdown ?? 0,
+      currentDrawdown: s.currentDrawdown ?? 0,
+      tradesCount: s.tradesCount ?? 0,
+      winningTrades: s.winningTrades ?? 0,
+      losingTrades: s.losingTrades ?? 0,
+    }));
+  }
+
+  async getHistoricalTrades(
+    platformUserId: string,
+    platformAccountId: string,
+    startDt: Date,
+    endDt?: Date,
+  ): Promise<PlatformTradeResult[]> {
+    const query: Record<string, string> = { startDate: startDt.toISOString() };
+    if (endDt) query['endDate'] = endDt.toISOString();
+    const res = await this.client.get<
+      Array<{
+        id: string;
+        symbol: string;
+        side: 'BUY' | 'SELL';
+        quantity: number;
+        entryPrice: number;
+        exitPrice?: number;
+        realizedPnl?: number;
+        commission?: number;
+        entryTime: string;
+        exitTime?: string;
+      }>
+    >(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/history`,
+      query,
+    );
+    return (res ?? []).map((t) => {
+      const trade: PlatformTradeResult = {
+        externalId: t.id,
+        platformAccountId,
+        symbol: t.symbol,
+        side: t.side,
+        quantity: t.quantity,
+        entryPrice: t.entryPrice,
+        commission: t.commission ?? 0,
+        entryTime: new Date(t.entryTime),
+      };
+      if (t.exitPrice !== undefined) trade.exitPrice = t.exitPrice;
+      if (t.realizedPnl !== undefined) trade.realizedPnl = t.realizedPnl;
+      if (t.exitTime) trade.exitTime = new Date(t.exitTime);
+      return trade;
+    });
+  }
+
+  // ── Breaches ────────────────────────────────────────────────────────────
+
+  async getAccountBreaches(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformBreachResult[]> {
+    const res = await this.client.get<YPFBreachResponse[]>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/breaches`,
+    );
+    return (res ?? []).map((b) => mapBreach(b, platformAccountId));
+  }
+
+  async getTenantBreaches(
+    platformAccountIds: string[],
+    startDt?: Date,
+    endDt?: Date,
+  ): Promise<PlatformBreachResult[]> {
+    const query: Record<string, string> = {};
+    if (platformAccountIds.length > 0) {
+      query['accountIds'] = platformAccountIds.join(',');
+    }
+    if (startDt) query['startDate'] = startDt.toISOString();
+    if (endDt) query['endDate'] = endDt.toISOString();
+    const res = await this.client.get<
+      Array<YPFBreachResponse & { accountId: string }>
+    >('/tenant/breaches', query);
+    return (res ?? []).map((b) => mapBreach(b, b.accountId));
+  }
+
+  // ── Tenant-wide ─────────────────────────────────────────────────────────
+
+  async listTenantAccounts(): Promise<PlatformAccountResult[]> {
+    const res = await this.client.get<YPFAccountResponse[]>('/tenant/accounts');
+    return (res ?? []).map(mapAccount);
+  }
+
+  // ── Programs ────────────────────────────────────────────────────────────
+
+  async getProgram(programId: string): Promise<PlatformProgramResult> {
+    const res = await this.client.get<YPFProgramResponse>(
+      `/programs/${encodeURIComponent(programId)}`,
+    );
+    return mapProgram(res);
+  }
+
+  async listPrograms(
+    params?: ListProgramsParams,
+  ): Promise<PlatformProgramResult[]> {
+    const query: Record<string, string> = {};
+    if (params?.name) query['name'] = params.name;
+    const res = await this.client.get<YPFProgramResponse[]>('/programs', query);
+    return (res ?? []).map(mapProgram);
+  }
+
+  // ── Payouts ─────────────────────────────────────────────────────────────
+
+  async createPayout(
+    platformUserId: string,
+    params: CreatePlatformPayoutParams,
+  ): Promise<PlatformPayoutResult> {
+    const body: Record<string, unknown> = {
+      accountId: params.platformAccountId,
+      amount: params.amount,
+      currency: params.currency,
+      method: params.method,
+    };
+    if (params.payoutDetails !== undefined) {
+      body['payoutDetails'] = params.payoutDetails;
+    }
+    const res = await this.client.post<YPFPayoutResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/payouts`,
+      body,
+    );
+    return mapPayout(res);
+  }
+
+  async listPayouts(params?: ListPayoutsParams): Promise<PlatformPayoutResult[]> {
+    const query: Record<string, string> = {};
+    if (params?.platformUserId) query['userId'] = params.platformUserId;
+    if (params?.platformAccountId) query['accountId'] = params.platformAccountId;
+    if (params?.status) query['status'] = params.status;
+    if (params?.pageToken) query['pageToken'] = params.pageToken;
+    const res = await this.client.get<YPFPayoutResponse[]>('/payouts', query);
+    return (res ?? []).map(mapPayout);
+  }
+
+  async approvePayout(platformPayoutId: string): Promise<void> {
+    await this.client.put<void>(
+      `/payouts/${encodeURIComponent(platformPayoutId)}/approve`,
+    );
+  }
+
+  async rejectPayout(platformPayoutId: string, reason?: string): Promise<void> {
+    const body: Record<string, unknown> = {};
+    if (reason !== undefined) body['reason'] = reason;
+    await this.client.put<void>(
+      `/payouts/${encodeURIComponent(platformPayoutId)}/reject`,
+      body,
+    );
+  }
+}

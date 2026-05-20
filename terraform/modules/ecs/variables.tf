@@ -90,8 +90,13 @@ variable "volumetrica_api_key_arn" {
   type        = string
 }
 
-variable "volumetrica_webhook_secret_arn" {
-  description = "ARN of the VOLUMETRICA_WEBHOOK_SECRET secret in Secrets Manager"
+variable "ypf_api_url_arn" {
+  description = "ARN of the YPF_API_URL secret in Secrets Manager"
+  type        = string
+}
+
+variable "ypf_client_key_arn" {
+  description = "ARN of the YPF_CLIENT_KEY secret in Secrets Manager"
   type        = string
 }
 

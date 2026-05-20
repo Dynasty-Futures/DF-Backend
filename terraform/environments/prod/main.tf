@@ -124,10 +124,9 @@ module "secrets" {
   google_client_id     = var.google_client_id
   google_client_secret = var.google_client_secret
 
-  # Volumetrica
-  volumetrica_api_url        = var.volumetrica_api_url
-  volumetrica_api_key        = var.volumetrica_api_key
-  volumetrica_webhook_secret = var.volumetrica_webhook_secret
+  # Volumetrica (retained for trader-dashboard SSO only)
+  volumetrica_api_url = var.volumetrica_api_url
+  volumetrica_api_key = var.volumetrica_api_key
 }
 
 # -----------------------------------------------------------------------------
@@ -200,17 +199,18 @@ module "ecs" {
   target_group_arn      = module.alb.target_group_arn
 
   # Secrets
-  secret_arns                    = module.secrets.all_secret_arns
-  database_url_secret_arn        = module.secrets.database_url_secret_arn
-  jwt_secret_arn                 = module.secrets.jwt_secret_arn
-  stripe_secret_key_arn          = module.secrets.stripe_secret_key_arn
-  stripe_webhook_secret_arn      = module.secrets.stripe_webhook_secret_arn
-  stripe_publishable_key_arn     = module.secrets.stripe_publishable_key_arn
-  google_client_id_arn           = module.secrets.google_client_id_arn
-  google_client_secret_arn       = module.secrets.google_client_secret_arn
-  volumetrica_api_url_arn        = module.secrets.volumetrica_api_url_arn
-  volumetrica_api_key_arn        = module.secrets.volumetrica_api_key_arn
-  volumetrica_webhook_secret_arn = module.secrets.volumetrica_webhook_secret_arn
+  secret_arns                = module.secrets.all_secret_arns
+  database_url_secret_arn    = module.secrets.database_url_secret_arn
+  jwt_secret_arn             = module.secrets.jwt_secret_arn
+  stripe_secret_key_arn      = module.secrets.stripe_secret_key_arn
+  stripe_webhook_secret_arn  = module.secrets.stripe_webhook_secret_arn
+  stripe_publishable_key_arn = module.secrets.stripe_publishable_key_arn
+  google_client_id_arn       = module.secrets.google_client_id_arn
+  google_client_secret_arn   = module.secrets.google_client_secret_arn
+  volumetrica_api_url_arn    = module.secrets.volumetrica_api_url_arn
+  volumetrica_api_key_arn    = module.secrets.volumetrica_api_key_arn
+  ypf_api_url_arn            = module.secrets.ypf_api_url_arn
+  ypf_client_key_arn         = module.secrets.ypf_client_key_arn
 
   # Task sizing
   cpu           = var.ecs_api_cpu

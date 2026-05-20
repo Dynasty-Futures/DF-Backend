@@ -123,7 +123,7 @@ model User {
   status    UserStatus @default(PENDING_VERIFICATION)
   kycStatus KycStatus  @default(NOT_STARTED) @map("kyc_status")
 
-  // External platform mapping
+  // External platform mapping (provider-issued user ID — YPF UUID today)
   platformUserId String? @unique @map("platform_user_id")
 
   emailVerified   Boolean   @default(false) @map("email_verified")
@@ -272,6 +272,9 @@ model AccountType {
   isActive    Boolean @default(true) @map("is_active")
   sortOrder   Int     @default(0) @map("sort_order")
 
+  // YPF program mapping (populated by scripts/seed-ypf-programs.ts)
+  ypfProgramId String? @unique @map("ypf_program_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -312,9 +315,6 @@ model ChallengeRule {
   newsRestriction       Boolean @default(true) @map("news_restriction")
   weekendRestriction    Boolean @default(true) @map("weekend_restriction")
 
-  // Platform integration
-  platformRuleId        String? @map("platform_rule_id") // Volumetrica TradingRule ID
-
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -331,8 +331,10 @@ model Account {
   accountTypeId String        @map("account_type_id")
   
   // External IDs
-  yourPropFirmId String?      @unique @map("your_prop_firm_id")
-  
+  platformAccountId String? @unique @map("platform_account_id")
+  platformUserId    String? @map("platform_user_id")     // denormalized from User.platformUserId for poller efficiency
+  volumetricaUserId String? @map("volumetrica_user_id")  // persisted from YPF extraValues; used for Volumetrica SSO
+
   status        AccountStatus @default(EVALUATION)
   
   // Financial state
@@ -374,7 +376,8 @@ model Account {
   @@index([userId])
   @@index([status])
   @@index([accountTypeId])
-  @@index([yourPropFirmId])
+  @@index([platformAccountId])
+  @@index([platformUserId])
   @@index([createdAt])
   @@map("accounts")
 }

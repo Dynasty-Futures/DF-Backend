@@ -38,7 +38,7 @@ database_subnet_cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
 # At 4 ACU max, the cluster can handle significant load.
 # Adjust max_capacity up if you see throttling in Performance Insights.
 
-aurora_engine_version        = "16.4"
+aurora_engine_version        = "16.11"
 aurora_database_name         = "dynasty_futures"
 aurora_min_capacity          = 0.5 # ~$43/month at idle
 aurora_max_capacity          = 4   # Scales up under load

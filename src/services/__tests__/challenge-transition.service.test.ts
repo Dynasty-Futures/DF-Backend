@@ -17,14 +17,11 @@ const mockChallengeUpdate = jest.fn();
 const mockChallengeCreate = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockRuleViolationCreate = jest.fn();
-const mockChallengeRuleUpdate = jest.fn();
 
 jest.mock('../../utils/database', () => ({
   prisma: {
     account: { findUnique: (...args: unknown[]) => mockAccountFindUnique(...args) },
-    challengeRule: { update: (...args: unknown[]) => mockChallengeRuleUpdate(...args) },
-    $transaction: (fn: (tx: unknown) => Promise<void>) =>
-      mockTransaction(fn),
+    $transaction: (fn: (tx: unknown) => Promise<void>) => mockTransaction(fn),
   },
 }));
 
@@ -37,25 +34,12 @@ jest.mock('../../utils/logger', () => ({
   },
 }));
 
-const mockProvider = {
-  assignTradingRule: jest.fn(),
-  listTradingRules: jest.fn(),
-  createTradingRule: jest.fn(),
-};
-
-jest.mock('../../providers/index', () => ({
-  getTradingPlatformProvider: () => mockProvider,
-}));
-
-// Make $transaction actually run the callback with mock tx
+// $transaction runs the callback with a mock tx
 beforeEach(() => {
   jest.clearAllMocks();
   mockTransaction.mockImplementation(async (fn) => {
     const tx = {
-      challenge: {
-        update: mockChallengeUpdate,
-        create: mockChallengeCreate,
-      },
+      challenge: { update: mockChallengeUpdate, create: mockChallengeCreate },
       account: { update: mockAccountUpdate },
       ruleViolation: { create: mockRuleViolationCreate },
     };
@@ -112,20 +96,13 @@ describe('failChallenge', () => {
 
   it('skips when account not found', async () => {
     mockAccountFindUnique.mockResolvedValue(null);
-
     await failChallenge('acc-missing', 'reason');
-
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it('skips when no active challenge', async () => {
-    mockAccountFindUnique.mockResolvedValue({
-      ...activeAccount,
-      challenges: [],
-    });
-
+    mockAccountFindUnique.mockResolvedValue({ ...activeAccount, challenges: [] });
     await failChallenge('acc-1', 'reason');
-
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
@@ -134,9 +111,7 @@ describe('failChallenge', () => {
       ...activeAccount,
       status: AccountStatus.FAILED,
     });
-
     await failChallenge('acc-1', 'reason');
-
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
@@ -149,7 +124,8 @@ describe('advanceChallenge', () => {
   const accountWithPhase1 = {
     id: 'acc-1',
     status: AccountStatus.EVALUATION,
-    yourPropFirmId: 'vol-acc-123',
+    platformAccountId: 'ypf-acc-123',
+    platformUserId: 'ypf-usr-1',
     startingBalance: { toNumber: () => 25000 },
     challenges: [
       { id: 'ch-1', status: ChallengeStatus.ACTIVE, phase: ChallengePhase.PHASE_1 },
@@ -169,7 +145,6 @@ describe('advanceChallenge', () => {
           maxSingleDayProfit: null,
           newsRestriction: false,
           weekendRestriction: false,
-          platformRuleId: null,
         },
       ],
     },
@@ -177,16 +152,9 @@ describe('advanceChallenge', () => {
 
   it('advances PHASE_1 to FUNDED with new challenge', async () => {
     mockAccountFindUnique.mockResolvedValue(accountWithPhase1);
-    mockProvider.listTradingRules.mockResolvedValue([]);
-    mockProvider.createTradingRule.mockResolvedValue({
-      tradingRuleId: 'vol-rule-funded',
-      name: 'STANDARD_25K_FUNDED',
-    });
-    mockProvider.assignTradingRule.mockResolvedValue(undefined);
 
     await advanceChallenge('acc-1');
 
-    // Current challenge marked as PASSED
     expect(mockChallengeUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'ch-1' },
@@ -194,7 +162,6 @@ describe('advanceChallenge', () => {
       }),
     );
 
-    // New funded challenge created
     expect(mockChallengeCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -205,71 +172,23 @@ describe('advanceChallenge', () => {
       }),
     );
 
-    // Account updated to FUNDED
     expect(mockAccountUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'acc-1' },
         data: expect.objectContaining({ status: AccountStatus.FUNDED }),
       }),
     );
-
-    // Trading rule assigned on platform
-    expect(mockProvider.assignTradingRule).toHaveBeenCalledWith(
-      'vol-acc-123',
-      'vol-rule-funded',
-    );
-
-    // platformRuleId cached
-    expect(mockChallengeRuleUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'rule-funded' },
-        data: { platformRuleId: 'vol-rule-funded' },
-      }),
-    );
-  });
-
-  it('uses cached platformRuleId when available', async () => {
-    const withCachedRule = {
-      ...accountWithPhase1,
-      accountType: {
-        ...accountWithPhase1.accountType,
-        challengeRules: [
-          {
-            ...accountWithPhase1.accountType.challengeRules[0],
-            platformRuleId: 'vol-rule-cached',
-          },
-        ],
-      },
-    };
-    mockAccountFindUnique.mockResolvedValue(withCachedRule);
-    mockProvider.assignTradingRule.mockResolvedValue(undefined);
-
-    await advanceChallenge('acc-1');
-
-    expect(mockProvider.listTradingRules).not.toHaveBeenCalled();
-    expect(mockProvider.createTradingRule).not.toHaveBeenCalled();
-    expect(mockProvider.assignTradingRule).toHaveBeenCalledWith(
-      'vol-acc-123',
-      'vol-rule-cached',
-    );
   });
 
   it('skips when account not found', async () => {
     mockAccountFindUnique.mockResolvedValue(null);
-
     await advanceChallenge('acc-missing');
-
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it('skips when no active challenge', async () => {
-    mockAccountFindUnique.mockResolvedValue({
-      ...accountWithPhase1,
-      challenges: [],
-    });
-
+    mockAccountFindUnique.mockResolvedValue({ ...accountWithPhase1, challenges: [] });
     await advanceChallenge('acc-1');
-
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
@@ -280,21 +199,7 @@ describe('advanceChallenge', () => {
         { id: 'ch-funded', status: ChallengeStatus.ACTIVE, phase: ChallengePhase.FUNDED },
       ],
     });
-
     await advanceChallenge('acc-1');
-
     expect(mockTransaction).not.toHaveBeenCalled();
-  });
-
-  it('still completes DB transition if platform rule assignment fails', async () => {
-    mockAccountFindUnique.mockResolvedValue(accountWithPhase1);
-    mockProvider.listTradingRules.mockRejectedValue(new Error('API down'));
-
-    await advanceChallenge('acc-1');
-
-    // DB transition should still happen
-    expect(mockChallengeUpdate).toHaveBeenCalled();
-    expect(mockChallengeCreate).toHaveBeenCalled();
-    expect(mockAccountUpdate).toHaveBeenCalled();
   });
 });

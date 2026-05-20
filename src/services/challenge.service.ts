@@ -1,22 +1,18 @@
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-import { PaymentError } from '../utils/errors.js';
+import { BadRequestError, PaymentError } from '../utils/errors.js';
 import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
 import { getTradingPlatformProvider } from '../providers/index.js';
-import { mapChallengeRuleToTradingParams, findOrCreateTradingRule } from './rule-mapping.service.js';
 
 // =============================================================================
 // Challenge Service
 // =============================================================================
 
-// Maps frontend plan types to how we look up AccountTypes in the DB.
-// The AccountType.name field uses formats like "STANDARD_25K", "ADVANCED_50K", etc.
 const buildAccountTypeName = (planType: string, accountSize: number): string => {
   const sizeLabel = accountSize >= 1000 ? `${accountSize / 1000}K` : `${accountSize}`;
   return `${planType.toUpperCase()}_${sizeLabel}`;
 };
 
-// Dynasty plan skips evaluation and goes straight to funded
 const isDynastyPlan = (planType: string): boolean =>
   planType.toLowerCase() === 'dynasty';
 
@@ -33,11 +29,11 @@ interface ProvisionAccountParams {
 }
 
 export const provisionAccount = async (
-  params: ProvisionAccountParams
+  params: ProvisionAccountParams,
 ): Promise<void> => {
   const { userId, planType, accountSize, stripePaymentId, amountPaid } = params;
 
-  // Idempotency: check if we already provisioned for this payment
+  // Idempotency
   const existingChallenge = await prisma.challenge.findFirst({
     where: { stripePaymentId },
   });
@@ -45,7 +41,7 @@ export const provisionAccount = async (
   if (existingChallenge) {
     logger.warn(
       { stripePaymentId, challengeId: existingChallenge.id },
-      'Account already provisioned for this payment — skipping duplicate'
+      'Account already provisioned for this payment — skipping duplicate',
     );
     return;
   }
@@ -53,62 +49,65 @@ export const provisionAccount = async (
   const accountTypeName = buildAccountTypeName(planType, accountSize);
 
   const accountType = await prisma.accountType.findFirst({
-    where: {
-      name: accountTypeName,
-      isActive: true,
-    },
-    include: {
-      challengeRules: true,
-    },
+    where: { name: accountTypeName, isActive: true },
+    include: { challengeRules: true },
   });
 
   if (!accountType) {
     logger.error(
       { accountTypeName, planType, accountSize },
-      'AccountType not found for provisioning'
+      'AccountType not found for provisioning',
     );
     throw new PaymentError(
-      `No account type configured for ${planType} ${accountSize}. Payment was received but account could not be created. Please contact support.`
+      `No account type configured for ${planType} ${accountSize}. Payment was received but account could not be created. Please contact support.`,
+    );
+  }
+
+  if (!accountType.ypfProgramId) {
+    logger.error(
+      { accountTypeName, accountTypeId: accountType.id },
+      'AccountType has no ypfProgramId — run scripts/seed-ypf-programs.ts',
+    );
+    throw new BadRequestError(
+      `Account type ${accountTypeName} is not linked to a YPF program. Seed YPF programs before provisioning.`,
     );
   }
 
   const isDynasty = isDynastyPlan(planType);
   const initialPhase = isDynasty ? ChallengePhase.FUNDED : ChallengePhase.PHASE_1;
-  const initialAccountStatus = isDynasty ? AccountStatus.FUNDED : AccountStatus.EVALUATION;
+  const initialAccountStatus = isDynasty
+    ? AccountStatus.FUNDED
+    : AccountStatus.EVALUATION;
 
-  // Find challenge rules for the initial phase
-  const phaseRules = accountType.challengeRules.find(
-    (r) => r.phase === initialPhase
-  );
-
+  const phaseRules = accountType.challengeRules.find((r) => r.phase === initialPhase);
   const startingBalance = Number(accountType.accountSize);
 
   logger.info(
     {
       userId,
       accountTypeName,
+      ypfProgramId: accountType.ypfProgramId,
       initialPhase,
       initialAccountStatus,
       startingBalance,
       stripePaymentId,
     },
-    'Provisioning account after payment'
+    'Provisioning account after payment',
   );
 
-  // ── Provision on trading platform ──────────────────────────────────────
-  // Ensure the user exists on Volumetrica and create the trading account.
-  // This happens BEFORE the local DB transaction so we have the platform IDs.
-
+  // ── Provision on YPF ────────────────────────────────────────────────────
   let platformAccountId: string | undefined;
+  let platformUserId: string | undefined;
+  let volumetricaUserId: string | undefined;
 
   try {
     const provider = getTradingPlatformProvider();
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
-    let platformUserId = user.platformUserId;
+    platformUserId = user.platformUserId ?? undefined;
 
     if (!platformUserId) {
-      logger.info({ userId }, 'Creating user on trading platform');
+      logger.info({ userId }, 'Creating user on YPF');
 
       const platformUser = await provider.createUser({
         email: user.email,
@@ -125,77 +124,38 @@ export const provisionAccount = async (
         data: { platformUserId },
       });
 
-      logger.info(
-        { userId, platformUserId },
-        'Trading platform user created and linked',
-      );
+      logger.info({ userId, platformUserId }, 'YPF user created and linked');
     }
 
     logger.info(
-      { userId, platformUserId, startingBalance },
-      'Creating trading account on platform',
+      { userId, platformUserId, ypfProgramId: accountType.ypfProgramId },
+      'Creating YPF account on program',
     );
 
     const platformAccount = await provider.createAccount({
       platformUserId,
-      accountName: `${accountTypeName} — ${stripePaymentId.slice(-8)}`,
-      startingBalance,
+      programId: accountType.ypfProgramId,
+      tradeServer: 'Volumetrica',
+      currency: 'USD',
     });
 
     platformAccountId = platformAccount.platformAccountId;
+    volumetricaUserId =
+      (platformAccount.extraValues?.['VolumetricaUserId'] as string | undefined) ??
+      undefined;
 
     logger.info(
-      { userId, platformAccountId },
-      'Trading platform account created',
+      { userId, platformAccountId, hasVolumetricaUserId: !!volumetricaUserId },
+      'YPF account created',
     );
-
-    // ── Assign trading rule to platform account ───────────────────────────
-    if (platformAccountId && phaseRules) {
-      try {
-        let tradingRuleId = phaseRules.platformRuleId;
-
-        if (!tradingRuleId) {
-          const ruleParams = mapChallengeRuleToTradingParams(
-            phaseRules,
-            startingBalance,
-            accountTypeName,
-          );
-          tradingRuleId = await findOrCreateTradingRule(provider, ruleParams);
-
-          // Cache the platform rule ID for future provisioning
-          await prisma.challengeRule.update({
-            where: { id: phaseRules.id },
-            data: { platformRuleId: tradingRuleId },
-          });
-
-          logger.info(
-            { challengeRuleId: phaseRules.id, tradingRuleId },
-            'Cached platformRuleId on ChallengeRule',
-          );
-        }
-
-        await provider.assignTradingRule(platformAccountId, tradingRuleId);
-
-        logger.info(
-          { platformAccountId, tradingRuleId },
-          'Trading rule assigned to platform account',
-        );
-      } catch (ruleErr) {
-        logger.error(
-          { err: ruleErr, platformAccountId },
-          'Failed to assign trading rule — account created but rule not applied',
-        );
-      }
-    }
   } catch (err) {
     logger.error(
       { err, userId, stripePaymentId },
-      'Failed to provision on trading platform — creating local account anyway',
+      'Failed to provision on YPF — creating local account anyway',
     );
   }
 
   // ── Local DB transaction ────────────────────────────────────────────────
-
   await prisma.$transaction(async (tx) => {
     const account = await tx.account.create({
       data: {
@@ -206,7 +166,9 @@ export const provisionAccount = async (
         currentBalance: startingBalance,
         highWaterMark: startingBalance,
         ...(isDynasty && { fundedAt: new Date() }),
-        ...(platformAccountId && { yourPropFirmId: platformAccountId }),
+        ...(platformAccountId && { platformAccountId }),
+        ...(platformUserId && { platformUserId }),
+        ...(volumetricaUserId && { volumetricaUserId }),
       },
     });
 

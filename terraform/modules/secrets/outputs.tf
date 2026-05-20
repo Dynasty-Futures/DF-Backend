@@ -47,9 +47,14 @@ output "volumetrica_api_key_arn" {
   value       = aws_secretsmanager_secret.volumetrica_api_key.arn
 }
 
-output "volumetrica_webhook_secret_arn" {
-  description = "ARN of the VOLUMETRICA_WEBHOOK_SECRET secret"
-  value       = aws_secretsmanager_secret.volumetrica_webhook_secret.arn
+output "ypf_api_url_arn" {
+  description = "ARN of the YPF_API_URL secret (managed out-of-band)"
+  value       = data.aws_secretsmanager_secret.ypf_api_url.arn
+}
+
+output "ypf_client_key_arn" {
+  description = "ARN of the YPF_CLIENT_KEY secret (managed out-of-band)"
+  value       = data.aws_secretsmanager_secret.ypf_client_key.arn
 }
 
 output "all_secret_arns" {
@@ -64,6 +69,7 @@ output "all_secret_arns" {
     aws_secretsmanager_secret.google_client_secret.arn,
     aws_secretsmanager_secret.volumetrica_api_url.arn,
     aws_secretsmanager_secret.volumetrica_api_key.arn,
-    aws_secretsmanager_secret.volumetrica_webhook_secret.arn,
+    data.aws_secretsmanager_secret.ypf_api_url.arn,
+    data.aws_secretsmanager_secret.ypf_client_key.arn,
   ]
 }

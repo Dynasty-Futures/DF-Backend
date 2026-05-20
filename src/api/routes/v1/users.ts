@@ -418,55 +418,6 @@ router.get(
 );
 
 /**
- * POST /users/:id/platform/sync
- * Push the local user profile to the trading platform.
- * Admin-only — keeps the platform in sync after local edits.
- */
-router.post(
-  '/:id/platform/sync',
-  requireRole(UserRole.ADMIN),
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const targetId = req.params['id'] as string;
-      const result = await userService.syncUserToPlatform(targetId);
-
-      res.json({
-        success: true,
-        data: result,
-        message: 'User profile synced to trading platform',
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * POST /users/:id/platform/invite
- * Invite the user to the trading platform organization.
- * Returns an invitation URL the user must visit to accept.
- * Admin-only.
- */
-router.post(
-  '/:id/platform/invite',
-  requireRole(UserRole.ADMIN),
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const targetId = req.params['id'] as string;
-      const result = await userService.invitePlatformUser(targetId);
-
-      res.status(201).json({
-        success: true,
-        data: result,
-        message: 'User invited to trading platform',
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
  * DELETE /users/:id/platform
  * Unlink the user from the trading platform (clears platformUserId locally).
  * Does NOT delete the user on the platform. Admin-only.

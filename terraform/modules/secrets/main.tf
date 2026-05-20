@@ -13,7 +13,10 @@
 # - STRIPE_PUBLISHABLE_KEY
 # - VOLUMETRICA_API_URL
 # - VOLUMETRICA_API_KEY
-# - VOLUMETRICA_WEBHOOK_SECRET
+#
+# Data sources (looked up by name; managed out-of-band):
+# - YPF_API_URL
+# - YPF_CLIENT_KEY
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -167,16 +170,17 @@ resource "aws_secretsmanager_secret_version" "volumetrica_api_key" {
   secret_string = var.volumetrica_api_key
 }
 
-resource "aws_secretsmanager_secret" "volumetrica_webhook_secret" {
-  name        = "${var.project_name}/${var.environment}/app/volumetrica-webhook-secret"
-  description = "Volumetrica webhook signing secret for ${var.project_name}"
+# -----------------------------------------------------------------------------
+# YPF (YourPropFirm Client API v1)
+# -----------------------------------------------------------------------------
+# Values are populated out-of-band (AWS console / CLI) so they don't enter
+# terraform state. Terraform only manages the wiring from these names to the
+# ECS task definition + task execution role IAM allowlist.
 
-  tags = {
-    Name = "${var.project_name}-volumetrica-webhook-secret-${var.environment}"
-  }
+data "aws_secretsmanager_secret" "ypf_api_url" {
+  name = "${var.project_name}/${var.environment}/app/ypf-api-url"
 }
 
-resource "aws_secretsmanager_secret_version" "volumetrica_webhook_secret" {
-  secret_id     = aws_secretsmanager_secret.volumetrica_webhook_secret.id
-  secret_string = var.volumetrica_webhook_secret
+data "aws_secretsmanager_secret" "ypf_client_key" {
+  name = "${var.project_name}/${var.environment}/app/ypf-api-key"
 }

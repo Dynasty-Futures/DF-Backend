@@ -208,12 +208,6 @@ variable "volumetrica_api_key" {
   sensitive   = true
 }
 
-variable "volumetrica_webhook_secret" {
-  description = "Shared secret for verifying Volumetrica webhook requests"
-  type        = string
-  sensitive   = true
-}
-
 # -----------------------------------------------------------------------------
 # Domain (Optional)
 # -----------------------------------------------------------------------------
