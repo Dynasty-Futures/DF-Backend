@@ -211,3 +211,95 @@ export const sendSupportTicketNotification = async (
     );
   }
 };
+
+// =============================================================================
+// Password Reset Email
+// =============================================================================
+
+interface PasswordResetEmailUser {
+  email: string;
+  firstName: string;
+}
+
+const RESET_LINK_TTL_MINUTES = 60;
+
+const buildPasswordResetHtml = (
+  firstName: string,
+  resetUrl: string,
+  isFirstPasswordSet: boolean
+): string => {
+  const heading = isFirstPasswordSet ? 'Set your password' : 'Reset your password';
+  const body = isFirstPasswordSet
+    ? `We received a request to set a password for your Dynasty Futures account. You usually sign in with Google — setting a password lets you sign in either way.`
+    : `We received a request to reset the password for your Dynasty Futures account.`;
+
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#222;">
+      <h2 style="color:#111;">${heading}</h2>
+      <p>Hi ${firstName || 'there'},</p>
+      <p>${body}</p>
+      <p style="margin:24px 0;">
+        <a href="${resetUrl}"
+           style="background:#111;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;display:inline-block;">
+          ${heading}
+        </a>
+      </p>
+      <p style="font-size:13px;color:#666;">
+        This link expires in ${RESET_LINK_TTL_MINUTES} minutes. If the button doesn't work, paste this URL into your browser:
+        <br /><span style="word-break:break-all;">${resetUrl}</span>
+      </p>
+      <p style="font-size:13px;color:#666;">
+        If you didn't request this, you can safely ignore this email — your account is unchanged.
+      </p>
+    </div>
+  `.trim();
+};
+
+const buildPasswordResetText = (
+  firstName: string,
+  resetUrl: string,
+  isFirstPasswordSet: boolean
+): string => {
+  const heading = isFirstPasswordSet ? 'Set your password' : 'Reset your password';
+  const body = isFirstPasswordSet
+    ? `We received a request to set a password for your Dynasty Futures account. You usually sign in with Google — setting a password lets you sign in either way.`
+    : `We received a request to reset the password for your Dynasty Futures account.`;
+
+  return [
+    `=== ${heading} ===`,
+    '',
+    `Hi ${firstName || 'there'},`,
+    '',
+    body,
+    '',
+    `Open this link to continue (expires in ${RESET_LINK_TTL_MINUTES} minutes):`,
+    resetUrl,
+    '',
+    `If you didn't request this, you can safely ignore this email — your account is unchanged.`,
+  ].join('\n');
+};
+
+/**
+ * Send a password reset email with a one-time link.
+ *
+ * Errors are thrown — callers should decide whether to swallow them. For the
+ * forgot-password flow, callers SHOULD swallow so the response shape doesn't
+ * leak whether the email exists.
+ */
+export const sendPasswordResetEmail = async (
+  user: PasswordResetEmailUser,
+  rawToken: string,
+  isFirstPasswordSet: boolean
+): Promise<void> => {
+  const resetUrl = `${config.frontendUrl}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  const subject = isFirstPasswordSet
+    ? 'Set your Dynasty Futures password'
+    : 'Reset your Dynasty Futures password';
+
+  await sendEmail({
+    to: user.email,
+    subject,
+    htmlBody: buildPasswordResetHtml(user.firstName, resetUrl, isFirstPasswordSet),
+    textBody: buildPasswordResetText(user.firstName, resetUrl, isFirstPasswordSet),
+  });
+};

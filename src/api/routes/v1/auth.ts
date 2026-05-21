@@ -16,19 +16,21 @@ const router = Router();
 // Validation Schemas
 // =============================================================================
 
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be at most 128 characters')
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+    'Password must contain at least one lowercase letter, one uppercase letter, and one digit'
+  );
+
 const registerSchema = z.object({
   email: z
     .string()
     .email('Invalid email address')
     .max(255, 'Email must be at most 255 characters'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be at most 128 characters')
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Password must contain at least one lowercase letter, one uppercase letter, and one digit'
-    ),
+  password: passwordSchema,
   firstName: z
     .string()
     .min(1, 'First name is required')
@@ -54,6 +56,15 @@ const refreshSchema = z.object({
 
 const logoutSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address').max(255),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required').max(512),
+  newPassword: passwordSchema,
 });
 
 // =============================================================================
@@ -250,6 +261,61 @@ router.post(
       res.json({
         success: true,
         message: 'Logged out successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /auth/password/forgot
+ * Initiate a password reset. Always returns 200 with the same message
+ * regardless of whether the email maps to a user — this prevents enumeration.
+ */
+router.post(
+  '/password/forgot',
+  authRateLimiter,
+  validateBody(forgotPasswordSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { email } = req.body as z.infer<typeof forgotPasswordSchema>;
+
+      await authService.requestPasswordReset({ email });
+
+      logger.info({ email, ip: req.ip }, 'Password reset requested');
+
+      res.json({
+        success: true,
+        message:
+          'If an account exists for that email, you will receive a password reset link shortly.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /auth/password/reset
+ * Complete a password reset using the token from the email link.
+ * On success, all existing sessions for the user are invalidated.
+ */
+router.post(
+  '/password/reset',
+  authRateLimiter,
+  validateBody(resetPasswordSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { token, newPassword } = req.body as z.infer<typeof resetPasswordSchema>;
+
+      await authService.resetPassword({ token, newPassword });
+
+      logger.info({ ip: req.ip }, 'Password reset completed');
+
+      res.json({
+        success: true,
+        message: 'Password reset successful. Please sign in with your new password.',
       });
     } catch (error) {
       next(error);

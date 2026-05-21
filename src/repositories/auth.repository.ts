@@ -422,3 +422,78 @@ export const lockCredentials = async (
     },
   });
 };
+
+// =============================================================================
+// Password Reset
+// =============================================================================
+
+/**
+ * Persist a password reset token hash + expiry against a user's credentials.
+ *
+ * Upserts the credentials row so this works for OAuth-only users too — in that
+ * case we create a credentials row with `passwordHash: null` (the user will set
+ * a password by completing the reset flow).
+ */
+export const setPasswordResetToken = async (
+  userId: string,
+  tokenHash: string,
+  expiresAt: Date
+): Promise<void> => {
+  await prisma.userCredential.upsert({
+    where: { userId },
+    create: {
+      userId,
+      passwordHash: null,
+      resetToken: tokenHash,
+      resetTokenExpiry: expiresAt,
+    },
+    update: {
+      resetToken: tokenHash,
+      resetTokenExpiry: expiresAt,
+    },
+  });
+};
+
+/** User + credentials, looked up by hashed reset token. */
+export type UserWithCredentialsByResetToken = User & {
+  credentials: UserCredential;
+};
+
+/**
+ * Find a user by the SHA-256 hash of a password reset token.
+ * Returns null if no credentials row carries that hash.
+ */
+export const findUserByResetTokenHash = async (
+  tokenHash: string
+): Promise<UserWithCredentialsByResetToken | null> => {
+  const credential = await prisma.userCredential.findFirst({
+    where: { resetToken: tokenHash },
+    include: { user: true },
+  });
+
+  if (!credential) return null;
+
+  const { user, ...credentials } = credential;
+  return { ...user, credentials };
+};
+
+/**
+ * Consume a password reset: set the new hash, clear the reset token, reset
+ * failed-attempts/lock state, and bump passwordChangedAt — all in one txn.
+ */
+export const consumePasswordReset = async (
+  userId: string,
+  newPasswordHash: string
+): Promise<void> => {
+  await prisma.userCredential.update({
+    where: { userId },
+    data: {
+      passwordHash: newPasswordHash,
+      resetToken: null,
+      resetTokenExpiry: null,
+      failedAttempts: 0,
+      lockedUntil: null,
+      passwordChangedAt: new Date(),
+    },
+  });
+};
