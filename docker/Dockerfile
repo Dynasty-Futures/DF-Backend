@@ -50,9 +50,13 @@ RUN npm ci --only=production && \
     npm install tsx && \
     npm cache clean --force
 
-# Copy built application and seed script
+# Copy built application and seed scripts
 COPY --from=builder /app/dist ./dist
 COPY prisma/seed.ts ./prisma/seed.ts
+# scripts/ + src/ are needed by one-off admin tsx scripts (e.g. seed-ypf-programs.ts
+# imports from ../src/providers/ypf and ../src/utils/logger).
+COPY scripts ./scripts
+COPY src ./src
 
 # Set ownership
 RUN chown -R nodejs:nodejs /app
