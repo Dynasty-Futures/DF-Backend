@@ -48,57 +48,171 @@ const createProgram = async (
   return client.post<YPFProgramShape>('/programs', body);
 };
 
+// =============================================================================
+// YPF body builders
+// =============================================================================
+// CreateProgramRequest shape: rules are arrays of CreateRuleRequest objects,
+// not flat objects with named fields. Each rule encodes a condition as
+// (type, when, value, operator, threshold, calculationBase).
+//
+// Server environment is always Demo — prop-firm evaluations + funded accounts
+// run on simulated rails (the firm carries P&L, not the trader).
+//
+// serverGroups maps each TradeServerVersion to a tenant-configured group name.
+// 'Volumetrica' here is a placeholder — update to the real YPF group name
+// before the first real challenge purchase.
+// =============================================================================
+
+const SERVER_TYPE = 'Demo' as const;
+const VOLUMETRICA_GROUP = 'Volumetrica';
+
+interface YPFRule {
+  name: string;
+  type: 'Profit' | 'Breach' | 'Withdrawal';
+  when: string;
+  value: string;
+  operator: string;
+  threshold: number;
+  stringValue: string | null;
+  calculationBase: 'Balance' | 'Equity';
+}
+
+const buildBreachRules = (rule: ChallengeRule): YPFRule[] => {
+  const rules: YPFRule[] = [
+    {
+      name: 'Max Daily Loss',
+      type: 'Breach',
+      when: 'UserPlacesAPosition',
+      value: 'DailyDrawDown',
+      operator: 'MaxDrawDown',
+      threshold: Number(rule.maxDailyLoss),
+      stringValue: null,
+      calculationBase: 'Balance',
+    },
+    {
+      name: rule.drawdownType === 'trailing' ? 'Trailing Max Drawdown' : 'Max Drawdown',
+      type: 'Breach',
+      when: 'UserPlacesAPosition',
+      value: rule.drawdownType === 'trailing' ? 'TrailingDrawdown' : 'DrawDown',
+      operator: 'MaxDrawDown',
+      threshold: Number(rule.maxTotalDrawdown),
+      stringValue: null,
+      calculationBase: rule.drawdownType === 'trailing' ? 'Equity' : 'Balance',
+    },
+  ];
+
+  if (rule.maxPositionSize) {
+    rules.push({
+      name: 'Max Position Size',
+      type: 'Breach',
+      when: 'UserPlacesAPosition',
+      value: 'MaxSymbolPosition',
+      operator: 'MoreThan',
+      threshold: rule.maxPositionSize,
+      stringValue: null,
+      calculationBase: 'Balance',
+    });
+  }
+
+  return rules;
+};
+
+const buildProfitRules = (
+  rule: ChallengeRule,
+  phase: ChallengePhase,
+): YPFRule[] => {
+  // FUNDED accounts have no upgrade objectives.
+  if (phase === ChallengePhase.FUNDED) return [];
+
+  const rules: YPFRule[] = [
+    {
+      name: 'Profit Target',
+      type: 'Profit',
+      when: 'UserPlacesAPosition',
+      value: 'ProfitTarget',
+      operator: 'ReachesPercent',
+      threshold: Number(rule.profitTarget),
+      stringValue: null,
+      calculationBase: 'Balance',
+    },
+    {
+      name: 'Min Trading Days',
+      type: 'Profit',
+      when: 'UserPlacesAPosition',
+      value: 'TradingDays',
+      operator: 'ReachesValue',
+      threshold: rule.minTradingDays,
+      stringValue: null,
+      calculationBase: 'Balance',
+    },
+  ];
+
+  if (rule.consistencyRule && rule.maxSingleDayProfit) {
+    rules.push({
+      name: 'Daily Profit Consistency',
+      type: 'Profit',
+      when: 'UserPlacesAPosition',
+      value: 'DailyProfitConsistency',
+      operator: 'LessThanPercent',
+      threshold: Number(rule.maxSingleDayProfit),
+      stringValue: null,
+      calculationBase: 'Balance',
+    });
+  }
+
+  return rules;
+};
+
+const buildWithdrawalRules = (
+  accountType: AccountType,
+  phase: ChallengePhase,
+): YPFRule[] => {
+  if (phase !== ChallengePhase.FUNDED) return [];
+  return [
+    {
+      name: 'Minimum Payout Amount',
+      type: 'Withdrawal',
+      when: 'UserRequestWithdraw',
+      value: 'Profit',
+      operator: 'MoreThan',
+      threshold: Number(accountType.minPayoutAmount),
+      stringValue: null,
+      calculationBase: 'Balance',
+    },
+  ];
+};
+
 const buildProgramBody = (
   accountType: AccountType,
   rule: ChallengeRule,
   phase: ChallengePhase,
   nextProgramId: string | null,
 ): Record<string, unknown> => {
-  const balance = Number(accountType.accountSize);
-  const breachRules: Record<string, unknown> = {
-    maxDrawdownPercent: Number(rule.maxTotalDrawdown),
-    maxDailyLossPercent: Number(rule.maxDailyLoss),
-    drawdownType: rule.drawdownType,
-  };
-  if (rule.maxPositionSize) {
-    breachRules['maxPositionSize'] = rule.maxPositionSize;
-  }
-  if (rule.maxOpenPositions) {
-    breachRules['maxOpenPositions'] = rule.maxOpenPositions;
-  }
-
-  const profitRules: Record<string, unknown> = {};
-  if (phase !== ChallengePhase.FUNDED) {
-    profitRules['profitTargetPercent'] = Number(rule.profitTarget);
-    profitRules['minTradingDays'] = rule.minTradingDays;
-    if (rule.maxTradingDays) {
-      profitRules['maxTradingDays'] = rule.maxTradingDays;
-    }
-  }
-  if (rule.consistencyRule && rule.maxSingleDayProfit) {
-    profitRules['maxSingleDayProfitPercent'] = Number(rule.maxSingleDayProfit);
-  }
-
-  const withdrawalRules: Record<string, unknown> = {};
-  if (phase === ChallengePhase.FUNDED) {
-    withdrawalRules['profitSplitPercent'] = accountType.profitSplit;
-    withdrawalRules['minPayoutAmount'] = Number(accountType.minPayoutAmount);
-    withdrawalRules['frequency'] = accountType.payoutFrequency;
-  }
+  const initialBalance = Number(accountType.accountSize);
+  // The absolute equity floor — initial balance minus the configured drawdown.
+  const lowestEquity =
+    initialBalance * (1 - Number(rule.maxTotalDrawdown) / 100);
 
   const body: Record<string, unknown> = {
     name: programNameFor(accountType, phase),
     description: accountType.description ?? `${accountType.displayName} ${phase}`,
-    currency: 'USD',
-    initialBalance: balance,
-    serverType: 'Volumetrica',
     isEnabled: true,
+    type: SERVER_TYPE,
+    serverGroups: { Volumetrica: VOLUMETRICA_GROUP },
+    customLeverage: {},
+    initialBalance,
+    lowestEquity,
+    maxTradingDays: rule.maxTradingDays ?? 0,
     isWithdrawalAllowed: phase === ChallengePhase.FUNDED,
-    breachRules,
-    profitRules,
-    withdrawalRules,
+    profitSplit: phase === ChallengePhase.FUNDED ? accountType.profitSplit : 0,
+    breachRules: buildBreachRules(rule),
+    profitRules: buildProfitRules(rule, phase),
+    withdrawalRules: buildWithdrawalRules(accountType, phase),
+    currency: 'USD',
+    isRequireKYC: false,
   };
-  if (nextProgramId) body['nextProgramId'] = nextProgramId;
+
+  if (nextProgramId) body.nextProgramId = nextProgramId;
   return body;
 };
 
