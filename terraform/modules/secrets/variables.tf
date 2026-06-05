@@ -71,9 +71,3 @@ variable "volumetrica_api_key" {
   type        = string
   sensitive   = true
 }
-
-variable "volumetrica_webhook_secret" {
-  description = "Shared secret for verifying Volumetrica webhook requests"
-  type        = string
-  sensitive   = true
-}

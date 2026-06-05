@@ -1,8 +1,7 @@
 // =============================================================================
 // Sync Service — On-Write Sync Helpers
 // =============================================================================
-// Called after any provider mutation to persist Volumetrica data into Prisma.
-// Phase 2 will add nightly bulk sync and webhook-driven sync here.
+// Called after any provider mutation to persist platform data into Prisma.
 // =============================================================================
 
 import { Prisma } from '@prisma/client';
@@ -19,10 +18,6 @@ import type {
 // User Sync
 // =============================================================================
 
-/**
- * Pulls a user profile from the platform and updates local Prisma fields
- * that may have drifted (e.g. name, email changed on the platform side).
- */
 export const syncUserFromPlatform = async (
   localUserId: string,
   platformData: PlatformUserResult,
@@ -51,11 +46,6 @@ export const syncUserFromPlatform = async (
 // Account Sync
 // =============================================================================
 
-/**
- * Maps a platform account result back into the local Prisma Account fields
- * and upserts (update-or-create is not needed here because accounts are always
- * created locally first; we just update the live fields).
- */
 export const syncAccountFromPlatform = async (
   localAccountId: string,
   platformData: PlatformAccountResult,
@@ -65,11 +55,18 @@ export const syncAccountFromPlatform = async (
     'Syncing account from platform',
   );
 
+  // Surface VolumetricaUserId from extraValues if it just arrived
+  const volumetricaUserId =
+    (platformData.extraValues?.['VolumetricaUserId'] as string | undefined) ??
+    undefined;
+
   await prisma.account.update({
     where: { id: localAccountId },
     data: {
       currentBalance: platformData.balance,
-      yourPropFirmId: platformData.platformAccountId,
+      platformAccountId: platformData.platformAccountId,
+      platformUserId: platformData.platformUserId,
+      ...(volumetricaUserId && { volumetricaUserId }),
       updatedAt: new Date(),
     },
   });
@@ -79,10 +76,6 @@ export const syncAccountFromPlatform = async (
 // Trade Sync
 // =============================================================================
 
-/**
- * Upserts settled trades from the platform into the local DB.
- * Uses `externalId` as the dedup key.
- */
 export const syncTradesFromPlatform = async (
   localAccountId: string,
   trades: PlatformTradeResult[],
@@ -97,10 +90,9 @@ export const syncTradesFromPlatform = async (
         })
       : null;
 
-    const metadata: Prisma.InputJsonValue | typeof Prisma.JsonNull =
-      trade.metadata
-        ? (trade.metadata as Prisma.InputJsonValue)
-        : Prisma.JsonNull;
+    const metadata: Prisma.InputJsonValue | typeof Prisma.JsonNull = trade.metadata
+      ? (trade.metadata as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
 
     const data = {
       accountId: localAccountId,
@@ -138,10 +130,6 @@ export const syncTradesFromPlatform = async (
 // Snapshot Sync
 // =============================================================================
 
-/**
- * Upserts daily snapshots from the platform into the local DB.
- * Uses the unique constraint `[accountId, date]` for dedup.
- */
 export const syncSnapshotsFromPlatform = async (
   localAccountId: string,
   snapshots: PlatformSnapshotResult[],
@@ -176,7 +164,7 @@ export const syncSnapshotsFromPlatform = async (
         update: data,
         create: data,
       });
-      created++; // counts both insert and update for simplicity
+      created++;
     } catch (err) {
       logger.warn(
         { err, localAccountId, date: dateOnly },

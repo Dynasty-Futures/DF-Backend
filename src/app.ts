@@ -14,7 +14,6 @@ import {
 import healthRoutes from './api/routes/health.js';
 import v1Routes from './api/routes/v1/index.js';
 import stripeWebhookRoutes from './api/routes/webhooks.js';
-import volumetricaWebhookRoutes from './api/routes/webhooks-volumetrica.js';
 
 // =============================================================================
 // Create Express Application
@@ -71,9 +70,6 @@ export const createApp = (): Application => {
   // Body parsing
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // Volumetrica webhook — mounted after express.json() (uses JSON body, not raw)
-  app.use('/webhooks/volumetrica', volumetricaWebhookRoutes);
 
   // Request logging
   if (config.isDevelopment) {

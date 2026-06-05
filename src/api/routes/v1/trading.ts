@@ -40,11 +40,6 @@ const liveQuerySchema = z.object({
   live: z.coerce.boolean().default(false),
 });
 
-const reportQuerySchema = z.object({
-  startDt: z.coerce.date(),
-  endDt: z.coerce.date().optional(),
-});
-
 const iframeQuerySchema = z.object({
   accountId: z.string().uuid().optional(),
 });
@@ -103,30 +98,6 @@ router.get(
       const snapshot = await tradingService.getAccountLiveSnapshot(accountId, req.user!.id);
 
       res.json({ success: true, data: snapshot });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
-/**
- * GET /v1/trading/accounts/:id/report
- * **LIVE** — proxy to provider report (computed on-demand).
- */
-router.get(
-  '/accounts/:id/report',
-  validateQuery(reportQuerySchema),
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { startDt, endDt } = req.query as unknown as {
-        startDt: Date;
-        endDt?: Date;
-      };
-
-      const accountId = req.params['id'] as string;
-      const report = await tradingService.getAccountReport(accountId, req.user!.id, startDt, endDt);
-
-      res.json({ success: true, data: report });
     } catch (error) {
       next(error);
     }

@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dynasty Futures is a **proprietary futures trading firm** backend. Traders purchase evaluation challenges via Stripe, must meet profit targets while adhering to risk rules, and receive funded accounts upon success. Three tiers: Standard (evaluation → funded), Advanced (instant activation), Dynasty (instant funding). Account sizes: $25K–$150K.
 
-The system integrates with **Volumetrica** (current trading platform) for account provisioning, trade data, and live snapshots. The provider is swappable via `TRADING_PLATFORM` env var — all platform access goes through the `TradingPlatformProvider` interface in `src/providers/`.
+The system integrates with **YPF (YourPropFirm) Client API v1** as the management plane — account provisioning, trade data, live snapshots, breaches, programs, payouts. YPF delegates downstream order execution to **Volumetrica** (configured per-account at creation time), so traders place orders on Volumetrica's web UI while we never call Volumetrica's management endpoints directly. A thin Volumetrica-direct SSO module (`src/providers/volumetrica/volumetrica-sso.ts`) is retained for the "Open Platform" trader-dashboard iframe — the Volumetrica user ID is sourced from YPF's `account.extraValues.VolumetricaUserId`.
+
+The provider is swappable via `TRADING_PLATFORM` env var — all management plane access goes through the `TradingPlatformProvider` interface in `src/providers/`. YPF has no webhook surface, so state changes are pulled by the `src/jobs/ypf-poller.job.ts` cron (default `*/1 * * * *`, configurable via `YPF_POLL_CRON`).
 
 ## Commands
 
@@ -121,9 +123,14 @@ The global error handler auto-converts `ZodError` into `ValidationError` with fi
 
 `src/services/trading.service.ts` uses a hybrid data strategy:
 - **STORED** endpoints read from Prisma (fast, cached)
-- **LIVE** endpoints pass through to the Volumetrica provider (real-time)
-- Many endpoints support `?live=true` to force a refresh from the platform before returning stored data
-- `syncService` handles writing platform data back into Prisma
+- **LIVE** endpoints pass through to the YPF provider (real-time)
+- Many endpoints support `?live=true` to force a refresh from YPF before returning stored data
+- `syncService` handles writing YPF data back into Prisma
+- `ypfSyncService` is invoked by the YPF poller per active account and fires `challengeTransitionService.failChallenge` / `advanceChallenge` when YPF reports a Breached or Upgraded state
+
+### YPF Programs
+
+`AccountType.ypfProgramId` links each local AccountType to a pre-seeded YPF program. Run `tsx scripts/seed-ypf-programs.ts` once per environment to create programs and back-fill this field. Phase progression (PHASE_1 → FUNDED) is handled by YPF via each program's `nextProgramId` link, and the poller mirrors the transition into the local DB.
 
 ### Database
 

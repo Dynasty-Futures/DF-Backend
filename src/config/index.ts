@@ -30,15 +30,15 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 
-  // YourPropFirm API (legacy)
-  YOURPROPFIRM_API_URL: z.string().url().optional(),
-  YOURPROPFIRM_API_KEY: z.string().optional(),
+  // Trading Platform (YPF = YourPropFirm Client API v1, management plane)
+  TRADING_PLATFORM: z.enum(['ypf']).default('ypf'),
+  YPF_API_URL: z.string().url().optional(),
+  YPF_CLIENT_KEY: z.string().optional(),
+  YPF_POLL_CRON: z.string().default('*/1 * * * *'),
 
-  // Trading Platform
-  TRADING_PLATFORM: z.enum(['volumetrica']).default('volumetrica'),
+  // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
-  VOLUMETRICA_WEBHOOK_SECRET: z.string().optional(),
 
   // Google OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -123,18 +123,16 @@ export const config = {
     publishableKey: env.STRIPE_PUBLISHABLE_KEY,
   },
 
-  // YourPropFirm (legacy)
-  yourPropFirm: {
-    apiUrl: env.YOURPROPFIRM_API_URL,
-    apiKey: env.YOURPROPFIRM_API_KEY,
-  },
-
   // Trading Platform
   tradingPlatform: env.TRADING_PLATFORM,
+  ypf: {
+    apiUrl: env.YPF_API_URL,
+    clientKey: env.YPF_CLIENT_KEY,
+    pollCron: env.YPF_POLL_CRON,
+  },
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,
     apiKey: env.VOLUMETRICA_API_KEY,
-    webhookSecret: env.VOLUMETRICA_WEBHOOK_SECRET,
   },
 
   // Google OAuth

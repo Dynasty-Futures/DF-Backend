@@ -83,16 +83,22 @@ export interface PlatformInviteResult {
 
 export interface CreatePlatformAccountParams {
   platformUserId: string;
-  accountName: string;
-  startingBalance: number;
-  /** Platform-specific account group / template ID */
+  /** YPF program ID — required for YPF, ignored by legacy flat-resource providers */
+  programId?: string | undefined;
+  accountName?: string | undefined;
+  startingBalance?: number | undefined;
+  /** Platform-specific account group / template ID (legacy) */
   groupId?: string | undefined;
   currency?: string | undefined;
+  /** Which downstream trade server to use (YPF: 'Volumetrica' | 'MatchTrader' | ...) */
+  tradeServer?: string | undefined;
 }
 
 export interface PlatformAccountResult {
   platformAccountId: string;
   platformUserId: string;
+  /** YPF program ID this account belongs to (optional for non-YPF providers) */
+  programId?: string | undefined;
   accountName: string;
   status: string;
   balance: number;
@@ -101,8 +107,73 @@ export interface PlatformAccountResult {
   margin?: number | undefined;
   startingBalance: number;
   currency: string;
+  /** Provider-issued login credentials surfaced at account creation time */
+  loginCredentials?: { login: string; password: string } | undefined;
+  /** Provider-specific overflow (e.g. YPF's `extraValues` carrying VolumetricaUserId) */
+  extraValues?: Record<string, unknown> | undefined;
   createdAt?: Date | undefined;
   updatedAt?: Date | undefined;
+}
+
+// ── Breaches ────────────────────────────────────────────────────────────────
+
+/** A rule-violation event reported by the platform (polled, since YPF has no webhooks). */
+export interface PlatformBreachResult {
+  platformAccountId: string;
+  ruleName: string;
+  severity: 'soft' | 'hard';
+  reason: string;
+  triggeredValue?: number | undefined;
+  thresholdValue?: number | undefined;
+  occurredAt: Date;
+  raw?: Record<string, unknown> | undefined;
+}
+
+// ── Programs (YPF) ──────────────────────────────────────────────────────────
+
+/** A YPF program defines an account template (initial balance + breach/profit/withdrawal rules). */
+export interface PlatformProgramResult {
+  programId: string;
+  name: string;
+  initialBalance: number;
+  currency: string;
+  /** Phase progression — Phase 1 → Phase 2 → Funded chain */
+  nextProgramId?: string | undefined;
+  raw?: Record<string, unknown> | undefined;
+}
+
+export interface ListProgramsParams {
+  name?: string | undefined;
+}
+
+// ── Payouts ─────────────────────────────────────────────────────────────────
+
+export interface CreatePlatformPayoutParams {
+  platformAccountId: string;
+  amount: number;
+  currency: string;
+  method: string;
+  payoutDetails?: Record<string, unknown> | undefined;
+}
+
+export interface PlatformPayoutResult {
+  platformPayoutId: string;
+  platformUserId: string;
+  platformAccountId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  method: string;
+  createdAt?: Date | undefined;
+  updatedAt?: Date | undefined;
+  raw?: Record<string, unknown> | undefined;
+}
+
+export interface ListPayoutsParams {
+  platformUserId?: string | undefined;
+  platformAccountId?: string | undefined;
+  status?: string | undefined;
+  pageToken?: string | undefined;
 }
 
 // ── Report ──────────────────────────────────────────────────────────────────

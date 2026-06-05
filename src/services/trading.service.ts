@@ -10,36 +10,67 @@ import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { NotFoundError, ForbiddenError, PlatformError } from '../utils/errors.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
+import {
+  getVolumetricaLoginUrl,
+  getVolumetricaIFrameUrl,
+} from '../providers/volumetrica/volumetrica-sso.js';
 import * as syncService from './sync.service.js';
-
-import type { PlatformReportResult } from '../providers/types.js';
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-const requirePlatformAccountId = (account: { yourPropFirmId: string | null }): string => {
-  if (!account.yourPropFirmId) {
-    throw new PlatformError('This account is not linked to a trading platform yet', {}, 400);
+interface PlatformIdsAccount {
+  platformAccountId: string | null;
+  platformUserId: string | null;
+}
+
+const requirePlatformIds = (
+  account: PlatformIdsAccount,
+): { platformUserId: string; platformAccountId: string } => {
+  if (!account.platformAccountId || !account.platformUserId) {
+    throw new PlatformError(
+      'This account is not linked to a trading platform yet',
+      {},
+      400,
+    );
   }
-  return account.yourPropFirmId;
+  return {
+    platformUserId: account.platformUserId,
+    platformAccountId: account.platformAccountId,
+  };
 };
 
 const requirePlatformUserId = (user: { platformUserId: string | null }): string => {
   if (!user.platformUserId) {
-    throw new PlatformError('This user is not linked to a trading platform yet', {}, 400);
+    throw new PlatformError(
+      'This user is not linked to a trading platform yet',
+      {},
+      400,
+    );
   }
   return user.platformUserId;
+};
+
+const requireVolumetricaUserId = async (userId: string): Promise<string> => {
+  const account = await prisma.account.findFirst({
+    where: { userId, volumetricaUserId: { not: null } },
+    select: { volumetricaUserId: true },
+  });
+  if (!account?.volumetricaUserId) {
+    throw new PlatformError(
+      'Volumetrica SSO not available for this user — no linked account exposes a VolumetricaUserId yet',
+      {},
+      400,
+    );
+  }
+  return account.volumetricaUserId;
 };
 
 // =============================================================================
 // Account Queries
 // =============================================================================
 
-/**
- * **STORED** — list the authenticated user's accounts from Prisma.
- * Supports `?live=true` to refresh all accounts from the provider first.
- */
 export const getUserAccounts = async (userId: string, live = false) => {
   if (live) {
     await refreshUserAccountsFromPlatform(userId);
@@ -62,9 +93,6 @@ export const getUserAccounts = async (userId: string, live = false) => {
   });
 };
 
-/**
- * **STORED + LIVE merge** — local metadata merged with a live snapshot.
- */
 export const getAccountDetail = async (accountId: string, userId: string) => {
   const account = await prisma.account.findUnique({
     where: { id: accountId, deletedAt: null },
@@ -90,27 +118,28 @@ export const getAccountDetail = async (accountId: string, userId: string) => {
   if (account.userId !== userId) throw new ForbiddenError('Not your account');
 
   let liveData = null;
-  if (account.yourPropFirmId) {
+  if (account.platformAccountId && account.platformUserId) {
     try {
       const provider = getTradingPlatformProvider();
-      liveData = await provider.getAccount(account.yourPropFirmId);
+      liveData = await provider.getAccount(
+        account.platformUserId,
+        account.platformAccountId,
+      );
     } catch (err) {
       logger.warn(
-        { err, accountId, platformId: account.yourPropFirmId },
-        'Failed to fetch live account data — returning stored only'
+        {
+          err,
+          accountId,
+          platformAccountId: account.platformAccountId,
+        },
+        'Failed to fetch live account data — returning stored only',
       );
     }
   }
 
-  return {
-    ...account,
-    live: liveData,
-  };
+  return { ...account, live: liveData };
 };
 
-/**
- * **LIVE** — real-time balance, equity, P&L direct from provider.
- */
 export const getAccountLiveSnapshot = async (accountId: string, userId: string) => {
   const account = await prisma.account.findUnique({
     where: { id: accountId, deletedAt: null },
@@ -119,43 +148,21 @@ export const getAccountLiveSnapshot = async (accountId: string, userId: string) 
   if (!account) throw new NotFoundError('Account not found');
   if (account.userId !== userId) throw new ForbiddenError('Not your account');
 
-  const platformAccountId = requirePlatformAccountId(account);
+  const ids = requirePlatformIds(account);
   const provider = getTradingPlatformProvider();
 
-  return provider.getAccount(platformAccountId);
-};
-
-/**
- * **LIVE** — on-demand report computed by the trading platform.
- */
-export const getAccountReport = async (
-  accountId: string,
-  userId: string,
-  startDt: Date,
-  endDt?: Date
-): Promise<PlatformReportResult> => {
-  const account = await prisma.account.findUnique({
-    where: { id: accountId, deletedAt: null },
-  });
-
-  if (!account) throw new NotFoundError('Account not found');
-  if (account.userId !== userId) throw new ForbiddenError('Not your account');
-
-  const platformAccountId = requirePlatformAccountId(account);
-  const provider = getTradingPlatformProvider();
-
-  return provider.getAccountReport(platformAccountId, startDt, endDt);
+  return provider.getAccount(ids.platformUserId, ids.platformAccountId);
 };
 
 // =============================================================================
 // Stored Data
 // =============================================================================
 
-/**
- * **STORED** — daily snapshots from Prisma. Supports `?live=true` to force
- * a platform pull + DB sync before responding.
- */
-export const getAccountSnapshots = async (accountId: string, userId: string, live = false) => {
+export const getAccountSnapshots = async (
+  accountId: string,
+  userId: string,
+  live = false,
+) => {
   const account = await prisma.account.findUnique({
     where: { id: accountId, deletedAt: null },
   });
@@ -163,13 +170,19 @@ export const getAccountSnapshots = async (accountId: string, userId: string, liv
   if (!account) throw new NotFoundError('Account not found');
   if (account.userId !== userId) throw new ForbiddenError('Not your account');
 
-  if (live && account.yourPropFirmId) {
+  if (live && account.platformAccountId && account.platformUserId) {
     try {
       const provider = getTradingPlatformProvider();
-      const platformSnapshots = await provider.getDailySnapshots(account.yourPropFirmId);
+      const platformSnapshots = await provider.getDailySnapshots(
+        account.platformUserId,
+        account.platformAccountId,
+      );
       await syncService.syncSnapshotsFromPlatform(accountId, platformSnapshots);
     } catch (err) {
-      logger.warn({ err, accountId }, 'Failed live snapshot sync — returning stored');
+      logger.warn(
+        { err, accountId },
+        'Failed live snapshot sync — returning stored',
+      );
     }
   }
 
@@ -179,11 +192,11 @@ export const getAccountSnapshots = async (accountId: string, userId: string, liv
   });
 };
 
-/**
- * **STORED** — historical trades from Prisma. Supports `?live=true` to force
- * a platform pull + DB sync before responding.
- */
-export const getAccountTrades = async (accountId: string, userId: string, live = false) => {
+export const getAccountTrades = async (
+  accountId: string,
+  userId: string,
+  live = false,
+) => {
   const account = await prisma.account.findUnique({
     where: { id: accountId, deletedAt: null },
   });
@@ -191,16 +204,20 @@ export const getAccountTrades = async (accountId: string, userId: string, live =
   if (!account) throw new NotFoundError('Account not found');
   if (account.userId !== userId) throw new ForbiddenError('Not your account');
 
-  if (live && account.yourPropFirmId) {
+  if (live && account.platformAccountId && account.platformUserId) {
     try {
       const provider = getTradingPlatformProvider();
       const platformTrades = await provider.getHistoricalTrades(
-        account.yourPropFirmId,
-        account.createdAt
+        account.platformUserId,
+        account.platformAccountId,
+        account.createdAt,
       );
       await syncService.syncTradesFromPlatform(accountId, platformTrades);
     } catch (err) {
-      logger.warn({ err, accountId }, 'Failed live trade sync — returning stored');
+      logger.warn(
+        { err, accountId },
+        'Failed live trade sync — returning stored',
+      );
     }
   }
 
@@ -214,10 +231,6 @@ export const getAccountTrades = async (accountId: string, userId: string, live =
 // Account Actions
 // =============================================================================
 
-/**
- * **LIVE + on-write sync** — resets the account on the provider, then updates
- * the local DB with the result.
- */
 export const resetAccount = async (accountId: string, userId: string) => {
   const account = await prisma.account.findUnique({
     where: { id: accountId, deletedAt: null },
@@ -226,63 +239,76 @@ export const resetAccount = async (accountId: string, userId: string) => {
   if (!account) throw new NotFoundError('Account not found');
   if (account.userId !== userId) throw new ForbiddenError('Not your account');
 
-  const platformAccountId = requirePlatformAccountId(account);
+  const ids = requirePlatformIds(account);
   const provider = getTradingPlatformProvider();
 
-  const result = await provider.resetAccount(platformAccountId);
+  const result = await provider.resetAccount(ids.platformUserId, ids.platformAccountId);
   await syncService.syncAccountFromPlatform(accountId, result);
 
   return result;
 };
 
 // =============================================================================
-// Dashboard / Login URLs
+// Dashboard / Login URLs (Volumetrica-direct SSO; orthogonal to YPF mgmt plane)
 // =============================================================================
 
-/**
- * **LIVE** — generates a one-time-use login URL from the provider.
- */
 export const getDashboardUrl = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new NotFoundError('User not found');
 
-  const platformUserId = requirePlatformUserId(user);
-  const provider = getTradingPlatformProvider();
+  requirePlatformUserId(user);
+  const volumetricaUserId = await requireVolumetricaUserId(userId);
 
-  return { url: await provider.getLoginUrl(platformUserId) };
+  return { url: await getVolumetricaLoginUrl(volumetricaUserId) };
 };
 
-/**
- * **LIVE** — generates an iFrame embed URL from the provider.
- */
-export const getIFrameUrl = async (userId: string, accountId?: string | undefined) => {
+export const getIFrameUrl = async (
+  userId: string,
+  accountId?: string | undefined,
+) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new NotFoundError('User not found');
 
-  const platformUserId = requirePlatformUserId(user);
+  requirePlatformUserId(user);
 
-  let platformAccountId: string | undefined;
+  let volumetricaUserId: string;
+  let volumetricaAccountId: string | undefined;
+
   if (accountId) {
     const account = await prisma.account.findUnique({
       where: { id: accountId, deletedAt: null },
     });
     if (!account) throw new NotFoundError('Account not found');
     if (account.userId !== userId) throw new ForbiddenError('Not your account');
-    platformAccountId = account.yourPropFirmId ?? undefined;
+    if (!account.volumetricaUserId) {
+      throw new PlatformError(
+        'This account does not have a Volumetrica SSO mapping yet',
+        {},
+        400,
+      );
+    }
+    volumetricaUserId = account.volumetricaUserId;
+    // VolumetricaAccountId is also surfaced via extraValues; we'd need to fetch it
+    // live since we don't currently persist it. Skip for now — login URL alone suffices
+    // for the trader-dashboard use case.
+    volumetricaAccountId = undefined;
+  } else {
+    volumetricaUserId = await requireVolumetricaUserId(userId);
   }
 
-  const provider = getTradingPlatformProvider();
-
-  return { url: await provider.getIFrameUrl(platformUserId, undefined, platformAccountId) };
+  return {
+    url: await getVolumetricaIFrameUrl(
+      volumetricaUserId,
+      undefined,
+      volumetricaAccountId,
+    ),
+  };
 };
 
 // =============================================================================
 // Internal Helpers
 // =============================================================================
 
-/**
- * Refresh all of a user's accounts from the platform into Prisma.
- */
 const refreshUserAccountsFromPlatform = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.platformUserId) return;
@@ -291,11 +317,11 @@ const refreshUserAccountsFromPlatform = async (userId: string) => {
 
   try {
     const provider = getTradingPlatformProvider();
-    const platformAccounts = await provider.getAccountsByUser(platformUserId);
+    const platformAccounts = await provider.listUserAccounts(platformUserId);
 
     for (const pa of platformAccounts) {
       const localAccount = await prisma.account.findUnique({
-        where: { yourPropFirmId: pa.platformAccountId },
+        where: { platformAccountId: pa.platformAccountId },
       });
 
       if (localAccount) {

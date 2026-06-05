@@ -100,6 +100,15 @@ resource "aws_rds_cluster" "main" {
   tags = {
     Name = "${var.project_name}-aurora-${var.environment}"
   }
+
+  # Aurora auto-applies minor version patches on the maintenance window.
+  # Terraform should not fight those — re-pinning to an older minor version
+  # would attempt a downgrade, which Aurora rejects (InvalidParameterCombination).
+  # Major-version upgrades remain intentional: bump the var and remove from
+  # ignore_changes for a single apply.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
 
 # -----------------------------------------------------------------------------
