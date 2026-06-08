@@ -109,6 +109,12 @@ enum TicketPriority {
   URGENT
 }
 
+enum AffiliateApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // =============================================================================
 // USERS & AUTHENTICATION
 // =============================================================================
@@ -145,6 +151,7 @@ model User {
   auditLogs     AuditLog[]
   supportTickets SupportTicket[] @relation("TicketCreator")
   assignedTickets SupportTicket[] @relation("TicketAssignee")
+  affiliateApplications AffiliateApplication[] @relation("AffiliateApplicant")
 
   @@index([email])
   @@index([status])
@@ -735,6 +742,50 @@ model SupportTicket {
   @@index([createdAt])
   @@index([email])
   @@map("support_tickets")
+}
+
+model AffiliateApplication {
+  id String @id @default(uuid())
+
+  // Optional link to an authenticated user — the affiliate page is public,
+  // so applications can be submitted anonymously.
+  creatorId      String? @map("creator_id")
+  applicantEmail String? @map("applicant_email")
+
+  // Web / social presence (at least one is required at the service layer)
+  websiteUrl   String? @map("website_url")
+  youtubeUrl   String? @map("youtube_url")
+  xUrl         String? @map("x_url")
+  instagramUrl String? @map("instagram_url")
+  facebookUrl  String? @map("facebook_url")
+  telegramUrl  String? @map("telegram_url")
+  discordUrl   String? @map("discord_url")
+
+  // Affiliate background
+  isFundedTrader          Boolean @map("is_funded_trader")
+  hasActiveDynastyAccount Boolean @map("has_active_dynasty_account")
+  promotionPlan           String  @map("promotion_plan")
+  primaryTrafficMethod    String  @map("primary_traffic_method")
+
+  // Content & confirmation
+  createsCustomContent               Boolean @map("creates_custom_content")
+  contentUpdateFrequency             String  @map("content_update_frequency")
+  preferredAffiliateCode             String  @map("preferred_affiliate_code")
+  restrictedJurisdictionConfirmation Boolean @map("restricted_jurisdiction_confirmation")
+
+  status AffiliateApplicationStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator User? @relation("AffiliateApplicant", fields: [creatorId], references: [id], onDelete: SetNull)
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([preferredAffiliateCode])
+  @@map("affiliate_applications")
 }
 
 model AdminNote {

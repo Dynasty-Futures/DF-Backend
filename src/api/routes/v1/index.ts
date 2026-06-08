@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import supportRoutes from './support.js';
+import affiliateRoutes from './affiliates.js';
 import authRoutes from './auth.js';
 import usersRoutes from './users.js';
 import accountsRoutes from './accounts.js';
@@ -21,6 +22,7 @@ const router = Router();
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);
 router.use('/support', supportRoutes);
+router.use('/affiliates', affiliateRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/checkout', checkoutRoutes);
 router.use('/trading', tradingRoutes);
@@ -41,6 +43,7 @@ router.get('/', (_req, res) => {
       accounts: '/v1/accounts',
       trading: '/v1/trading',
       support: '/v1/support/tickets',
+      affiliates: '/v1/affiliates/apply',
     },
   });
 });

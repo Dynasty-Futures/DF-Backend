@@ -1,5 +1,5 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
-import { SupportTicket } from '@prisma/client';
+import { AffiliateApplication, SupportTicket } from '@prisma/client';
 import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -302,4 +302,162 @@ export const sendPasswordResetEmail = async (
     htmlBody: buildPasswordResetHtml(user.firstName, resetUrl, isFirstPasswordSet),
     textBody: buildPasswordResetText(user.firstName, resetUrl, isFirstPasswordSet),
   });
+};
+
+// =============================================================================
+// Affiliate Application Email Notification
+// =============================================================================
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+/**
+ * Build the HTML body for an affiliate application notification email.
+ */
+const buildAffiliateApplicationHtml = (app: AffiliateApplication): string => {
+  const yesNo = (v: boolean): string => (v ? 'Yes' : 'No');
+
+  const socialRows = [
+    { label: 'Website', value: app.websiteUrl },
+    { label: 'YouTube', value: app.youtubeUrl },
+    { label: 'X (Twitter)', value: app.xUrl },
+    { label: 'Instagram', value: app.instagramUrl },
+    { label: 'Facebook', value: app.facebookUrl },
+    { label: 'Telegram', value: app.telegramUrl },
+    { label: 'Discord', value: app.discordUrl },
+  ].filter((r): r is { label: string; value: string } => Boolean(r.value));
+
+  const rows = [
+    { label: 'Application ID', value: app.id },
+    { label: 'Applicant Email', value: app.applicantEmail ?? 'N/A (anonymous)' },
+    { label: 'Preferred Affiliate Code', value: app.preferredAffiliateCode },
+    { label: 'Funded Trader', value: yesNo(app.isFundedTrader) },
+    { label: 'Active Dynasty Account', value: yesNo(app.hasActiveDynastyAccount) },
+    { label: 'Creates Custom Content', value: yesNo(app.createsCustomContent) },
+    {
+      label: 'Restricted-Jurisdiction Confirmation',
+      value: yesNo(app.restrictedJurisdictionConfirmation),
+    },
+    { label: 'Status', value: app.status },
+    { label: 'Submitted At', value: app.createdAt.toISOString() },
+  ];
+
+  const renderTable = (data: { label: string; value: string }[]): string =>
+    data
+      .map(
+        (r) =>
+          `<tr>
+          <td style="padding:8px 12px;font-weight:bold;border:1px solid #ddd;background:#f9f9f9;">${escapeHtml(r.label)}</td>
+          <td style="padding:8px 12px;border:1px solid #ddd;">${escapeHtml(r.value)}</td>
+        </tr>`
+      )
+      .join('\n');
+
+  const socialSection = socialRows.length
+    ? `<h3 style="color:#333;">Web & Social Presence</h3>
+       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">${renderTable(socialRows)}</table>`
+    : '';
+
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      <h2 style="color:#333;">New Affiliate Application</h2>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        ${renderTable(rows)}
+      </table>
+      ${socialSection}
+      <h3 style="color:#333;">Promotion Plan</h3>
+      <div style="padding:12px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;white-space:pre-wrap;margin-bottom:16px;">${escapeHtml(app.promotionPlan)}</div>
+      <h3 style="color:#333;">Primary Traffic Method</h3>
+      <div style="padding:12px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;white-space:pre-wrap;margin-bottom:16px;">${escapeHtml(app.primaryTrafficMethod)}</div>
+      <h3 style="color:#333;">Content Update Frequency</h3>
+      <div style="padding:12px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;white-space:pre-wrap;">${escapeHtml(app.contentUpdateFrequency)}</div>
+    </div>
+  `.trim();
+};
+
+/**
+ * Build the plain-text body for an affiliate application notification email.
+ */
+const buildAffiliateApplicationText = (app: AffiliateApplication): string => {
+  const yesNo = (v: boolean): string => (v ? 'Yes' : 'No');
+
+  const lines = [
+    '=== New Affiliate Application ===',
+    '',
+    `Application ID:            ${app.id}`,
+    `Applicant Email:           ${app.applicantEmail ?? 'N/A (anonymous)'}`,
+    `Preferred Affiliate Code:  ${app.preferredAffiliateCode}`,
+    `Funded Trader:             ${yesNo(app.isFundedTrader)}`,
+    `Active Dynasty Account:    ${yesNo(app.hasActiveDynastyAccount)}`,
+    `Creates Custom Content:    ${yesNo(app.createsCustomContent)}`,
+    `Restricted-Jur. Confirmed: ${yesNo(app.restrictedJurisdictionConfirmation)}`,
+    `Status:                    ${app.status}`,
+    `Submitted At:              ${app.createdAt.toISOString()}`,
+    '',
+    '--- Web & Social Presence ---',
+  ];
+
+  const socials: [string, string | null][] = [
+    ['Website', app.websiteUrl],
+    ['YouTube', app.youtubeUrl],
+    ['X (Twitter)', app.xUrl],
+    ['Instagram', app.instagramUrl],
+    ['Facebook', app.facebookUrl],
+    ['Telegram', app.telegramUrl],
+    ['Discord', app.discordUrl],
+  ];
+  for (const [label, value] of socials) {
+    if (value) lines.push(`${label}: ${value}`);
+  }
+
+  lines.push(
+    '',
+    '--- Promotion Plan ---',
+    app.promotionPlan,
+    '',
+    '--- Primary Traffic Method ---',
+    app.primaryTrafficMethod,
+    '',
+    '--- Content Update Frequency ---',
+    app.contentUpdateFrequency
+  );
+
+  return lines.join('\n');
+};
+
+/**
+ * Send a notification email to the affiliate team when a new application is submitted.
+ * Handles its own errors — logs failures rather than throwing — so callers can
+ * safely fire-and-forget.
+ */
+export const sendAffiliateApplicationNotification = async (
+  application: AffiliateApplication
+): Promise<void> => {
+  try {
+    const affiliateEmail = config.aws.ses.affiliateEmail;
+    const subject = `[New Affiliate Application] ${application.preferredAffiliateCode}`;
+
+    const emailParams: SendEmailParams = {
+      to: affiliateEmail,
+      subject,
+      htmlBody: buildAffiliateApplicationHtml(application),
+      textBody: buildAffiliateApplicationText(application),
+    };
+
+    if (application.applicantEmail) {
+      emailParams.replyTo = application.applicantEmail;
+    }
+
+    await sendEmail(emailParams);
+  } catch (err) {
+    logger.error(
+      { err, applicationId: application.id },
+      'Failed to send affiliate application notification email'
+    );
+  }
 };

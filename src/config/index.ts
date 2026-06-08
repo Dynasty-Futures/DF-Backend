@@ -52,6 +52,7 @@ const envSchema = z.object({
   S3_BUCKET_DOCUMENTS: z.string().optional(),
   SES_FROM_EMAIL: z.string().email().default('noreply@dynastyfuturesdyn.com'),
   SUPPORT_EMAIL: z.string().email().default('support@dynastyfuturesdyn.com'),
+  AFFILIATE_EMAIL: z.string().email().default('affiliates@dynastyfuturesdyn.com'),
 
   // Security
   BCRYPT_ROUNDS: z.string().default('12').transform(Number),
@@ -153,6 +154,7 @@ export const config = {
     ses: {
       fromEmail: env.SES_FROM_EMAIL,
       supportEmail: env.SUPPORT_EMAIL,
+      affiliateEmail: env.AFFILIATE_EMAIL,
     },
   },
 
