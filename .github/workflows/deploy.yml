@@ -161,20 +161,35 @@ jobs:
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.image_uri }}
         run: |
-          # Get the current task definition
+          # Get the current task definition as a template.
           TASK_DEF=$(aws ecs describe-task-definition \
             --task-definition $TASK_DEFINITION_FAMILY \
             --query 'taskDefinition' \
             --output json)
 
-          TASK_DEF_ARN=$(echo $TASK_DEF | jq -r '.taskDefinitionArn')
-          EXECUTION_ROLE=$(echo $TASK_DEF | jq -r '.executionRoleArn')
-          TASK_ROLE=$(echo $TASK_DEF | jq -r '.taskRoleArn')
+          # Register a new revision pinned to the IMAGE we just built, then run
+          # migrations against THAT. The previously-deployed task definition still
+          # points at the prior image, so running migrations against it would only
+          # ever see the prior image's prisma/migrations — a migration added in
+          # this deploy would silently not apply until the *next* deploy. Pinning
+          # the fresh image here keeps migrations in lockstep with the code.
+          MIGRATION_TASK_DEF=$(echo "$TASK_DEF" | jq \
+            --arg IMAGE "$IMAGE_URI" \
+            '.containerDefinitions[0].image = $IMAGE
+             | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                   .compatibilities, .registeredAt, .registeredBy)')
+
+          MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$MIGRATION_TASK_DEF" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "Registered migration task definition: $MIGRATION_TASK_DEF_ARN"
 
           # Run a one-off ECS task for migration
           TASK_ARN=$(aws ecs run-task \
             --cluster $ECS_CLUSTER \
-            --task-definition $TASK_DEF_ARN \
+            --task-definition $MIGRATION_TASK_DEF_ARN \
             --launch-type FARGATE \
             --network-configuration "awsvpcConfiguration={subnets=[${{ steps.network.outputs.subnets }}],securityGroups=[${{ steps.network.outputs.security_groups }}],assignPublicIp=DISABLED}" \
             --overrides '{
