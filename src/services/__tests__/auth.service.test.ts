@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { UserRole, UserStatus, KycStatus } from '@prisma/client';
-import { login, refreshAccessToken } from '../auth.service';
+import {
+  login,
+  refreshAccessToken,
+  requestPasswordReset,
+  resetPassword,
+} from '../auth.service';
 import type { JwtPayload } from '../../api/middleware/auth';
 
 // =============================================================================
@@ -17,6 +22,10 @@ const mockDeleteAllUserSessions = jest.fn();
 const mockCreateSession = jest.fn();
 const mockFindSessionByToken = jest.fn();
 const mockDeleteSession = jest.fn();
+const mockSetPasswordResetToken = jest.fn();
+const mockFindUserByResetTokenHash = jest.fn();
+const mockConsumePasswordReset = jest.fn();
+const mockSendPasswordResetEmail = jest.fn();
 
 jest.mock('../../repositories/auth.repository', () => ({
   findUserByEmail: jest.fn(),
@@ -35,6 +44,13 @@ jest.mock('../../repositories/auth.repository', () => ({
   incrementFailedAttempts: (...args: unknown[]) => mockIncrementFailedAttempts(...args),
   resetFailedAttempts: (...args: unknown[]) => mockResetFailedAttempts(...args),
   lockCredentials: (...args: unknown[]) => mockLockCredentials(...args),
+  setPasswordResetToken: (...args: unknown[]) => mockSetPasswordResetToken(...args),
+  findUserByResetTokenHash: (...args: unknown[]) => mockFindUserByResetTokenHash(...args),
+  consumePasswordReset: (...args: unknown[]) => mockConsumePasswordReset(...args),
+}));
+
+jest.mock('../email.service', () => ({
+  sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
 }));
 
 jest.mock('../../utils/logger', () => ({
@@ -83,6 +99,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCreateSession.mockResolvedValue({});
   mockDeleteAllUserSessions.mockResolvedValue(0);
+  mockSetPasswordResetToken.mockResolvedValue(undefined);
+  mockConsumePasswordReset.mockResolvedValue(undefined);
+  mockSendPasswordResetEmail.mockResolvedValue(undefined);
 });
 
 // =============================================================================
@@ -186,5 +205,162 @@ describe('refreshAccessToken', () => {
     expect(decoded.sid).toBe(sid);
     expect(decoded.type).toBe('access');
     expect(decoded.sub).toBe(baseUser.id);
+  });
+});
+
+// =============================================================================
+// requestPasswordReset — forgot-password flow
+// =============================================================================
+
+describe('requestPasswordReset', () => {
+  it('stores a hashed token and sends a reset email for a credentialed user', async () => {
+    mockFindUserByEmailWithCredentials.mockResolvedValue(userWithCredentials);
+
+    await expect(
+      requestPasswordReset({ email: baseUser.email })
+    ).resolves.toBeUndefined();
+
+    expect(mockSetPasswordResetToken).toHaveBeenCalledTimes(1);
+    const [userId, tokenHash, expiresAt] = mockSetPasswordResetToken.mock.calls[0]!;
+    expect(userId).toBe(baseUser.id);
+    // Hash, not raw token — must be the 64-char SHA-256 hex digest.
+    expect(tokenHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(expiresAt).toBeInstanceOf(Date);
+    expect((expiresAt as Date).getTime()).toBeGreaterThan(Date.now());
+
+    expect(mockSendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    const [emailUser, rawToken, isFirstPasswordSet] =
+      mockSendPasswordResetEmail.mock.calls[0]!;
+    expect(emailUser).toMatchObject({ email: baseUser.email, firstName: baseUser.firstName });
+    expect(typeof rawToken).toBe('string');
+    expect((rawToken as string).length).toBeGreaterThan(20);
+    // The raw token must NOT equal the stored hash — that's the whole point.
+    expect(rawToken).not.toBe(tokenHash);
+    expect(isFirstPasswordSet).toBe(false);
+  });
+
+  it('treats OAuth-only users as a first-password-set flow', async () => {
+    mockFindUserByEmailWithCredentials.mockResolvedValue({
+      ...baseUser,
+      credentials: null, // OAuth-only signup — no credentials row yet
+    });
+
+    await requestPasswordReset({ email: baseUser.email });
+
+    expect(mockSetPasswordResetToken).toHaveBeenCalledTimes(1);
+    const [, , ] = mockSetPasswordResetToken.mock.calls[0]!;
+    const [, , isFirstPasswordSet] = mockSendPasswordResetEmail.mock.calls[0]!;
+    expect(isFirstPasswordSet).toBe(true);
+  });
+
+  it('silently no-ops when no user matches the email (no enumeration)', async () => {
+    mockFindUserByEmailWithCredentials.mockResolvedValue(null);
+
+    await expect(
+      requestPasswordReset({ email: 'nobody@example.com' })
+    ).resolves.toBeUndefined();
+
+    expect(mockSetPasswordResetToken).not.toHaveBeenCalled();
+    expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not send a reset for banned or suspended users', async () => {
+    mockFindUserByEmailWithCredentials.mockResolvedValue({
+      ...userWithCredentials,
+      status: UserStatus.BANNED,
+    });
+
+    await requestPasswordReset({ email: baseUser.email });
+
+    expect(mockSetPasswordResetToken).not.toHaveBeenCalled();
+    expect(mockSendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('still resolves successfully when the email send fails', async () => {
+    mockFindUserByEmailWithCredentials.mockResolvedValue(userWithCredentials);
+    mockSendPasswordResetEmail.mockRejectedValueOnce(new Error('SES down'));
+
+    await expect(
+      requestPasswordReset({ email: baseUser.email })
+    ).resolves.toBeUndefined();
+
+    // Token was still persisted before the email attempt.
+    expect(mockSetPasswordResetToken).toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// resetPassword — completing the reset
+// =============================================================================
+
+describe('resetPassword', () => {
+  const futureExpiry = () => new Date(Date.now() + 30 * 60 * 1000);
+
+  it('rejects an unknown token with a generic message (no information leak)', async () => {
+    mockFindUserByResetTokenHash.mockResolvedValue(null);
+
+    await expect(
+      resetPassword({ token: 'bogus', newPassword: 'NewPass1!' })
+    ).rejects.toThrow('This password reset link is invalid or has expired');
+
+    expect(mockConsumePasswordReset).not.toHaveBeenCalled();
+    expect(mockDeleteAllUserSessions).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired token with the same generic message', async () => {
+    mockFindUserByResetTokenHash.mockResolvedValue({
+      ...baseUser,
+      credentials: {
+        ...userWithCredentials.credentials,
+        resetToken: 'sha256-hash',
+        resetTokenExpiry: new Date(Date.now() - 1000), // expired 1s ago
+      },
+    });
+
+    await expect(
+      resetPassword({ token: 'rawtoken', newPassword: 'NewPass1!' })
+    ).rejects.toThrow('This password reset link is invalid or has expired');
+
+    expect(mockConsumePasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the account is no longer active', async () => {
+    mockFindUserByResetTokenHash.mockResolvedValue({
+      ...baseUser,
+      status: UserStatus.BANNED,
+      credentials: {
+        ...userWithCredentials.credentials,
+        resetToken: 'sha256-hash',
+        resetTokenExpiry: futureExpiry(),
+      },
+    });
+
+    await expect(
+      resetPassword({ token: 'rawtoken', newPassword: 'NewPass1!' })
+    ).rejects.toThrow('This account is no longer active');
+
+    expect(mockConsumePasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('swaps the password and evicts every existing session on success', async () => {
+    mockFindUserByResetTokenHash.mockResolvedValue({
+      ...baseUser,
+      credentials: {
+        ...userWithCredentials.credentials,
+        resetToken: 'sha256-hash',
+        resetTokenExpiry: futureExpiry(),
+      },
+    });
+
+    await resetPassword({ token: 'rawtoken', newPassword: 'NewPass1!' });
+
+    expect(mockConsumePasswordReset).toHaveBeenCalledWith(baseUser.id, 'hashed-password');
+    expect(mockDeleteAllUserSessions).toHaveBeenCalledWith(baseUser.id);
+
+    // Order matters — the password must be updated BEFORE sessions are evicted
+    // (the new state is what the user will re-authenticate against).
+    const consumeOrder = mockConsumePasswordReset.mock.invocationCallOrder[0]!;
+    const evictOrder = mockDeleteAllUserSessions.mock.invocationCallOrder[0]!;
+    expect(consumeOrder).toBeLessThan(evictOrder);
   });
 });

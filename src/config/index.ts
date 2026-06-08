@@ -64,8 +64,8 @@ const envSchema = z.object({
   // CORS
   CORS_ORIGIN: z.string().default('*'),
 
-  // Frontend URL (for emails, etc.)
-  FRONTEND_URL: z.string().url().optional(),
+  // Frontend URL (for password reset emails, etc.)
+  FRONTEND_URL: z.string().url(),
 });
 
 // =============================================================================

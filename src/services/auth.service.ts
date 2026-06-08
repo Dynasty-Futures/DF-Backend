@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, createHash } from 'crypto';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import type { StringValue } from 'ms';
@@ -9,6 +9,7 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import {
   AuthenticationError,
+  BadRequestError,
   ConflictError,
   UnauthorizedError,
   ValidationError,
@@ -31,8 +32,12 @@ import {
   incrementFailedAttempts,
   resetFailedAttempts,
   lockCredentials,
+  setPasswordResetToken,
+  findUserByResetTokenHash,
+  consumePasswordReset,
   type SafeUser,
 } from '../repositories/auth.repository.js';
+import { sendPasswordResetEmail } from './email.service.js';
 import type { JwtPayload } from '../api/middleware/auth.js';
 
 // =============================================================================
@@ -236,6 +241,14 @@ export const login = async (input: LoginInput): Promise<AuthResult> => {
 
   if (!user || !user.credentials) {
     throw new AuthenticationError('Invalid email or password');
+  }
+
+  // Account exists but has no password set (OAuth-only signup, or in the middle
+  // of a first-password-set flow). Tell them to use the SSO they signed up with.
+  if (!user.credentials.passwordHash) {
+    throw new AuthenticationError(
+      'This account uses Google Sign-In. Please continue with Google.'
+    );
   }
 
   // Check account status
@@ -549,4 +562,128 @@ export const getMe = async (userId: string): Promise<SafeUser> => {
   }
 
   return user;
+};
+
+// =============================================================================
+// Password Reset
+// =============================================================================
+//
+// Two-step flow with the email channel as the proof of identity:
+//   1. requestPasswordReset(email) — mints a token, hashes it, persists the
+//      hash on UserCredential, emails the RAW token in a one-time link.
+//   2. resetPassword(token, newPassword) — re-hashes the incoming token,
+//      looks it up, swaps the password, evicts all sessions.
+//
+// Security choices:
+//   • The DB only ever stores SHA-256(token). If the DB leaks, the raw token
+//     is not recoverable, so attackers can't use leaked rows for ATO.
+//   • requestPasswordReset returns void unconditionally — the route never
+//     branches on whether the user existed, preventing email enumeration.
+//   • OAuth-only users (no passwordHash) are supported too: this becomes a
+//     "set your password" flow. setPasswordResetToken upserts the credentials
+//     row so we have somewhere to stash the token hash.
+// =============================================================================
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 60 minutes
+const RESET_TOKEN_BYTES = 32;
+
+const hashResetToken = (rawToken: string): string =>
+  createHash('sha256').update(rawToken).digest('hex');
+
+const generateResetToken = (): string =>
+  randomBytes(RESET_TOKEN_BYTES).toString('base64url');
+
+export interface RequestPasswordResetInput {
+  email: string;
+}
+
+/**
+ * Initiate a password reset. Always resolves successfully — the caller must
+ * not branch on whether the email exists. If the email maps to a user, an
+ * email is sent (or attempted; failures are swallowed and logged).
+ */
+export const requestPasswordReset = async (
+  input: RequestPasswordResetInput
+): Promise<void> => {
+  const email = input.email.toLowerCase();
+  const user = await findUserByEmailWithCredentials(email);
+
+  if (!user) {
+    // No user — silently no-op to avoid enumeration.
+    logger.info({ email }, 'Password reset requested for unknown email');
+    return;
+  }
+
+  if (user.status === UserStatus.BANNED || user.status === UserStatus.SUSPENDED) {
+    // Don't help non-active accounts recover access.
+    logger.info(
+      { userId: user.id, status: user.status },
+      'Password reset blocked for non-active account'
+    );
+    return;
+  }
+
+  const rawToken = generateResetToken();
+  const tokenHash = hashResetToken(rawToken);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await setPasswordResetToken(user.id, tokenHash, expiresAt);
+
+  const isFirstPasswordSet = !user.credentials || !user.credentials.passwordHash;
+
+  try {
+    await sendPasswordResetEmail(
+      { email: user.email, firstName: user.firstName },
+      rawToken,
+      isFirstPasswordSet
+    );
+    logger.info({ userId: user.id, isFirstPasswordSet }, 'Password reset email dispatched');
+  } catch (err) {
+    // Don't propagate — caller MUST return a generic success to the client.
+    logger.error({ err, userId: user.id }, 'Failed to send password reset email');
+  }
+};
+
+export interface ResetPasswordInput {
+  token: string;
+  newPassword: string;
+}
+
+/**
+ * Complete a password reset. Verifies the token, swaps the password, and
+ * evicts every existing session (kicks any open tabs / attackers).
+ *
+ * Throws BadRequestError for any token failure — the message is intentionally
+ * generic so we don't leak which check failed.
+ */
+export const resetPassword = async (input: ResetPasswordInput): Promise<void> => {
+  const { token, newPassword } = input;
+
+  const tokenHash = hashResetToken(token);
+  const found = await findUserByResetTokenHash(tokenHash);
+
+  if (!found || !found.credentials.resetTokenExpiry) {
+    throw new BadRequestError('This password reset link is invalid or has expired');
+  }
+
+  if (found.credentials.resetTokenExpiry < new Date()) {
+    throw new BadRequestError('This password reset link is invalid or has expired');
+  }
+
+  if (found.status === UserStatus.BANNED || found.status === UserStatus.SUSPENDED) {
+    throw new AuthenticationError('This account is no longer active');
+  }
+
+  const newHash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
+
+  await consumePasswordReset(found.id, newHash);
+
+  // Kick every active session — if an attacker was riding an old session, this
+  // boots them. Also evicts the user's other tabs, prompting a fresh login.
+  const evicted = await deleteAllUserSessions(found.id);
+
+  logger.info(
+    { userId: found.id, evictedSessions: evicted },
+    'Password reset completed'
+  );
 };
