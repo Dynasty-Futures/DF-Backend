@@ -97,8 +97,11 @@ const makeYpfPayout = (overrides: Record<string, unknown> = {}) => ({
   accountId: 'acc-001',
   amount: 2500,
   currency: 'USD',
-  status: 'Pending',
-  method: 'BankTransfer',
+  state: 'Pending',
+  type: 'Rise',
+  profitSplit: 90,
+  commission: 0,
+  transferAmount: 2250,
   createdAt: '2026-05-10T00:00:00Z',
   ...overrides,
 });
@@ -347,24 +350,34 @@ describe('YPFProvider', () => {
   // ── Payouts ──────────────────────────────────────────────────────────────
 
   describe('createPayout', () => {
-    it('posts with accountId in body and maps response', async () => {
+    it('posts { type, amount, accountId, payoutDetails } and maps response', async () => {
       mockPost.mockResolvedValueOnce(makeYpfPayout());
 
+      const payoutDetails = {
+        accountHolder: 'Jane Doe',
+        accountNumber: '123456789',
+        swiftBic: 'CHASUS33',
+        currency: 'USD',
+      };
       const result = await provider.createPayout('usr-001', {
         platformAccountId: 'acc-001',
         amount: 2500,
         currency: 'USD',
-        method: 'BankTransfer',
+        method: 'Rise',
+        payoutDetails,
       });
 
       expect(mockPost).toHaveBeenCalledWith('/users/usr-001/payouts', {
-        accountId: 'acc-001',
+        type: 'Rise',
         amount: 2500,
-        currency: 'USD',
-        method: 'BankTransfer',
+        accountId: 'acc-001',
+        payoutDetails,
       });
       expect(result.platformPayoutId).toBe('payout-001');
       expect(result.status).toBe('Pending');
+      expect(result.method).toBe('Rise');
+      expect(result.transferAmount).toBe(2250);
+      expect(result.profitSplit).toBe(90);
     });
   });
 

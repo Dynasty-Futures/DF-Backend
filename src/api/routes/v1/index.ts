@@ -6,6 +6,7 @@ import usersRoutes from './users.js';
 import accountsRoutes from './accounts.js';
 import checkoutRoutes from './checkout.js';
 import tradingRoutes from './trading.js';
+import payoutsRoutes from './payouts.js';
 
 // =============================================================================
 // V1 API Routes
@@ -15,7 +16,6 @@ const router = Router();
 
 // TODO: Import and mount route modules as they are implemented
 // import challengesRoutes from './challenges.js';
-// import payoutsRoutes from './payouts.js';
 // import adminRoutes from './admin.js';
 
 // Mounted routes
@@ -26,9 +26,9 @@ router.use('/affiliates', affiliateRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/checkout', checkoutRoutes);
 router.use('/trading', tradingRoutes);
+router.use('/payouts', payoutsRoutes);
 
 // router.use('/challenges', challengesRoutes);
-// router.use('/payouts', payoutsRoutes);
 // router.use('/admin', adminRoutes);
 
 // Placeholder route
@@ -42,6 +42,7 @@ router.get('/', (_req, res) => {
       users: '/v1/users',
       accounts: '/v1/accounts',
       trading: '/v1/trading',
+      payouts: '/v1/payouts',
       support: '/v1/support/tickets',
       affiliates: '/v1/affiliates/apply',
     },

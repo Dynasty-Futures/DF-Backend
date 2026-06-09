@@ -15,6 +15,7 @@ import { logger } from '../utils/logger.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
 import { getRedisClient } from '../utils/redis.js';
 import * as ypfSyncService from '../services/ypf-sync.service.js';
+import * as payoutService from '../services/payout.service.js';
 
 const LAST_POLL_KEY = 'ypf:poller:lastPollAt';
 
@@ -49,6 +50,16 @@ const writeLastPollAt = async (when: Date): Promise<void> => {
   }
 };
 
+// Mirror YPF payout state (approved/rejected in the CRM) into local records.
+// Isolated so a payout-sync failure never aborts the account poll.
+const syncPayoutsSafe = async (): Promise<void> => {
+  try {
+    await payoutService.syncPayouts();
+  } catch (err) {
+    logger.warn({ err }, 'ypf-poller: payout sync failed');
+  }
+};
+
 export const runYPFPoll = async (): Promise<void> => {
   const startedAt = new Date();
   const lastPollAt = await readLastPollAt();
@@ -71,6 +82,7 @@ export const runYPFPoll = async (): Promise<void> => {
 
   if (activeAccounts.length === 0) {
     logger.debug('YPF poll: no active accounts to poll');
+    await syncPayoutsSafe();
     await writeLastPollAt(startedAt);
     return;
   }
@@ -127,6 +139,7 @@ export const runYPFPoll = async (): Promise<void> => {
     }
   }
 
+  await syncPayoutsSafe();
   await writeLastPollAt(startedAt);
 
   logger.info(
