@@ -25,6 +25,10 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
+  // Payments — which provider handles checkout + webhooks. Stripe today;
+  // 'worthy' is the planned replacement (adapter not yet implemented).
+  PAYMENT_PROVIDER: z.enum(['stripe', 'worthy']).default('stripe'),
+
   // Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -116,6 +120,9 @@ export const config = {
     expiresIn: env.JWT_EXPIRES_IN,
     refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
   },
+
+  // Payments
+  paymentProvider: env.PAYMENT_PROVIDER,
 
   // Stripe
   stripe: {
