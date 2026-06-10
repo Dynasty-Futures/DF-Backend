@@ -13,3 +13,4 @@ export * as tradingService from './trading.service.js';
 export * as syncService from './sync.service.js';
 export * as challengeTransitionService from './challenge-transition.service.js';
 export * as ypfSyncService from './ypf-sync.service.js';
+export * as payoutService from './payout.service.js';

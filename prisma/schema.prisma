@@ -74,6 +74,7 @@ enum PayoutMethod {
   BANK_TRANSFER
   STRIPE
   CRYPTO
+  RISE
 }
 
 enum ViolationType {
@@ -603,6 +604,14 @@ model Payout {
 
   // Stripe
   stripeTransferId String? @map("stripe_transfer_id")
+
+  // YPF platform linkage — the payout request lives on YPF; we mirror its state.
+  platformPayoutId String?  @unique @map("platform_payout_id")
+  transferType     String?  @map("transfer_type")  // YPF TransferType, e.g. "Rise"
+  profitSplit      Decimal? @map("profit_split") @db.Decimal(5, 2)   // % kept by trader, computed by YPF
+  commission       Decimal? @db.Decimal(12, 2)
+  transferAmount   Decimal? @map("transfer_amount") @db.Decimal(12, 2) // net amount YPF will transfer
+  rejectionReason  String?  @map("rejection_reason")
 
   // Bank details (encrypted reference)
   bankDetailsRef   String? @map("bank_details_ref")

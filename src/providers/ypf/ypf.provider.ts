@@ -97,8 +97,15 @@ interface YPFPayoutResponse {
   accountId: string;
   amount: number;
   currency: string;
-  status: string;
-  method?: string;
+  /** PayoutState enum: 'Pending' | 'Approved' | 'Rejected' */
+  state?: string;
+  /** TransferType the payout was requested with */
+  type?: string;
+  commission?: number;
+  profitSplit?: number;
+  transferAmount?: number;
+  rejectionReason?: string | null;
+  stateTimestamp?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -199,12 +206,17 @@ const mapPayout = (p: YPFPayoutResponse): PlatformPayoutResult => {
     platformAccountId: p.accountId,
     amount: p.amount,
     currency: p.currency,
-    status: p.status,
-    method: p.method ?? 'unknown',
+    status: p.state ?? 'Pending',
+    method: p.type ?? 'unknown',
   };
+  if (p.profitSplit !== undefined) result.profitSplit = p.profitSplit;
+  if (p.commission !== undefined) result.commission = p.commission;
+  if (p.transferAmount !== undefined) result.transferAmount = p.transferAmount;
+  if (p.rejectionReason) result.rejectionReason = p.rejectionReason;
   const created = toDate(p.createdAt);
   if (created) result.createdAt = created;
-  const updated = toDate(p.updatedAt);
+  // YPF reports the last state change via `stateTimestamp`; fall back to updatedAt.
+  const updated = toDate(p.stateTimestamp ?? p.updatedAt);
   if (updated) result.updatedAt = updated;
   return result;
 };
@@ -499,11 +511,12 @@ export class YPFProvider implements TradingPlatformProvider {
     platformUserId: string,
     params: CreatePlatformPayoutParams,
   ): Promise<PlatformPayoutResult> {
+    // YPF's CreatePayoutRequest expects { type, amount, accountId, payoutDetails }.
+    // `type` is the TransferType (e.g. 'Rise'); currency travels inside payoutDetails.
     const body: Record<string, unknown> = {
-      accountId: params.platformAccountId,
+      type: params.method,
       amount: params.amount,
-      currency: params.currency,
-      method: params.method,
+      accountId: params.platformAccountId,
     };
     if (params.payoutDetails !== undefined) {
       body['payoutDetails'] = params.payoutDetails;

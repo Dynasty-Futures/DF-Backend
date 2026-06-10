@@ -152,7 +152,9 @@ export interface CreatePlatformPayoutParams {
   platformAccountId: string;
   amount: number;
   currency: string;
+  /** YPF TransferType — e.g. 'Rise', 'BankTransfer', 'Wise' */
   method: string;
+  /** Bank or crypto destination details, passed straight through to YPF */
   payoutDetails?: Record<string, unknown> | undefined;
 }
 
@@ -162,8 +164,18 @@ export interface PlatformPayoutResult {
   platformAccountId: string;
   amount: number;
   currency: string;
+  /** Normalized YPF PayoutState: 'Pending' | 'Approved' | 'Rejected' */
   status: string;
+  /** YPF TransferType the payout was requested with */
   method: string;
+  /** Profit-split percentage applied by YPF (trader's keep %) */
+  profitSplit?: number | undefined;
+  /** Commission deducted by YPF */
+  commission?: number | undefined;
+  /** Net amount YPF will actually transfer after split/commission */
+  transferAmount?: number | undefined;
+  /** Reason supplied by the YPF reviewer when status is Rejected */
+  rejectionReason?: string | undefined;
   createdAt?: Date | undefined;
   updatedAt?: Date | undefined;
   raw?: Record<string, unknown> | undefined;
