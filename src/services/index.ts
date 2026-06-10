@@ -7,7 +7,7 @@ export * as affiliateService from './affiliate.service.js';
 export * as authService from './auth.service.js';
 export * as userService from './user.service.js';
 export * as accountService from './account.service.js';
-export * as stripeService from './stripe.service.js';
+export * as paymentService from './payment.service.js';
 export * as challengeService from './challenge.service.js';
 export * as tradingService from './trading.service.js';
 export * as syncService from './sync.service.js';

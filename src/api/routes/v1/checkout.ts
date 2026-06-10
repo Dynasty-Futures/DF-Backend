@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../../middleware/auth.js';
-import { createCheckoutSession } from '../../../services/stripe.service.js';
+import { createCheckoutSession } from '../../../services/payment.service.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { logger } from '../../../utils/logger.js';
 
