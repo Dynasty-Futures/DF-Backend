@@ -557,19 +557,21 @@ describe('YPFProvider', () => {
   });
 
   describe('getHistoricalTrades', () => {
-    it('passes startDate and optional endDate', async () => {
+    it('maps YPF history field names and passes startDate/endDate', async () => {
+      // Real YPF /history shape: tradeSymbol/command/volume/openPrice/...
       mockGet.mockResolvedValueOnce([
         {
-          id: 'trade-1',
-          symbol: 'ESZ4',
-          side: 'BUY',
-          quantity: 1,
-          entryPrice: 5000.25,
-          exitPrice: 5005.5,
-          realizedPnl: 5.25,
-          commission: 2.5,
-          entryTime: '2026-05-10T13:00:00Z',
-          exitTime: '2026-05-10T13:15:00Z',
+          id: 'C835D900',
+          tradeSymbol: 'ES.CME',
+          command: 'Sell',
+          volume: 5,
+          openPrice: 7417.75,
+          closePrice: 7416.5,
+          profit: -312.5,
+          commission: 23.4,
+          openTime: '2026-05-10T13:00:00Z',
+          closeTime: '2026-05-10T13:15:00Z',
+          state: 'ClosedNormal',
         },
       ]);
 
@@ -587,8 +589,28 @@ describe('YPFProvider', () => {
           endDate: '2026-05-15T00:00:00.000Z',
         },
       );
-      expect(result[0]!.externalId).toBe('trade-1');
-      expect(result[0]!.symbol).toBe('ESZ4');
+      const t = result[0]!;
+      expect(t.externalId).toBe('C835D900');
+      expect(t.symbol).toBe('ES.CME');
+      expect(t.side).toBe('SELL'); // command 'Sell' → SELL
+      expect(t.quantity).toBe(5);
+      expect(t.entryPrice).toBe(7417.75);
+      expect(t.exitPrice).toBe(7416.5);
+      expect(t.realizedPnl).toBe(-312.5);
+      expect(t.commission).toBe(23.4);
+      expect(t.entryTime).toEqual(new Date('2026-05-10T13:00:00Z'));
+      expect(t.exitTime).toEqual(new Date('2026-05-10T13:15:00Z'));
+    });
+
+    it("defaults side to BUY when command is 'Buy'", async () => {
+      mockGet.mockResolvedValueOnce([
+        { id: 't2', tradeSymbol: 'NQ.CME', command: 'Buy', volume: 1, openTime: '2026-05-10T13:00:00Z' },
+      ]);
+      const result = await provider.getHistoricalTrades(
+        'usr-001',
+        'acc-001',
+        new Date('2026-05-01T00:00:00Z'),
+      );
       expect(result[0]!.side).toBe('BUY');
     });
   });

@@ -544,18 +544,21 @@ export class YPFProvider implements TradingPlatformProvider {
   ): Promise<PlatformTradeResult[]> {
     const query: Record<string, string> = { startDate: startDt.toISOString() };
     if (endDt) query['endDate'] = endDt.toISOString();
+    // YPF /history field names differ from our DTO: tradeSymbol/command/volume/
+    // openPrice/closePrice/profit/openTime/closeTime (command is 'Buy'|'Sell').
     const res = await this.client.get<
       Array<{
         id: string;
-        symbol: string;
-        side: 'BUY' | 'SELL';
-        quantity: number;
-        entryPrice: number;
-        exitPrice?: number;
-        realizedPnl?: number;
+        tradeSymbol?: string;
+        command?: string;
+        volume?: number;
+        openPrice?: number;
+        closePrice?: number;
+        profit?: number;
         commission?: number;
-        entryTime: string;
-        exitTime?: string;
+        openTime: string;
+        closeTime?: string;
+        state?: string;
       }>
     >(
       `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/history`,
@@ -565,16 +568,16 @@ export class YPFProvider implements TradingPlatformProvider {
       const trade: PlatformTradeResult = {
         externalId: t.id,
         platformAccountId,
-        symbol: t.symbol,
-        side: t.side,
-        quantity: t.quantity,
-        entryPrice: t.entryPrice,
+        symbol: t.tradeSymbol ?? '',
+        side: t.command?.toLowerCase() === 'sell' ? 'SELL' : 'BUY',
+        quantity: t.volume ?? 0,
+        entryPrice: t.openPrice ?? 0,
         commission: t.commission ?? 0,
-        entryTime: new Date(t.entryTime),
+        entryTime: new Date(t.openTime),
       };
-      if (t.exitPrice !== undefined) trade.exitPrice = t.exitPrice;
-      if (t.realizedPnl !== undefined) trade.realizedPnl = t.realizedPnl;
-      if (t.exitTime) trade.exitTime = new Date(t.exitTime);
+      if (t.closePrice !== undefined) trade.exitPrice = t.closePrice;
+      if (t.profit !== undefined) trade.realizedPnl = t.profit;
+      if (t.closeTime) trade.exitTime = new Date(t.closeTime);
       return trade;
     });
   }
