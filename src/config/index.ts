@@ -25,15 +25,6 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
-  // Payments — which provider handles checkout + webhooks. Stripe today;
-  // 'worthy' is the planned replacement (adapter not yet implemented).
-  PAYMENT_PROVIDER: z.enum(['stripe', 'worthy']).default('stripe'),
-
-  // Stripe
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
-
   // Trading Platform (YPF = YourPropFirm Client API v1, management plane)
   TRADING_PLATFORM: z.enum(['ypf']).default('ypf'),
   YPF_API_URL: z.string().url().optional(),
@@ -119,16 +110,6 @@ export const config = {
     secret: env.JWT_SECRET,
     expiresIn: env.JWT_EXPIRES_IN,
     refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
-  },
-
-  // Payments
-  paymentProvider: env.PAYMENT_PROVIDER,
-
-  // Stripe
-  stripe: {
-    secretKey: env.STRIPE_SECRET_KEY,
-    webhookSecret: env.STRIPE_WEBHOOK_SECRET,
-    publishableKey: env.STRIPE_PUBLISHABLE_KEY,
   },
 
   // Trading Platform

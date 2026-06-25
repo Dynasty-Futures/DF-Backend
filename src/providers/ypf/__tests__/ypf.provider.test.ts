@@ -212,6 +212,39 @@ describe('YPFProvider', () => {
         'vol-uuid-deadbeef',
       );
     });
+
+    it('maps day counters, program names, profit split + drawdown', async () => {
+      mockGet.mockResolvedValueOnce(
+        makeYpfAccount({
+          initialBalance: 50000,
+          balance: 49664.1,
+          programName: '50k- Advanced Evaluation',
+          nextProgramName: '50k - Advanced Funded',
+          tradingDays: 4,
+          profitTradingDays: 2,
+          withdrawProfitTradingDays: 1,
+          activeDays: 3,
+          profitSplit: 80,
+          drawDown: 0.67,
+          maxDrawDown: 1.2,
+        }),
+      );
+
+      const result = await provider.getAccount('usr-001', 'acc-001');
+
+      // startingBalance must come from initialBalance, NOT the live balance
+      expect(result.startingBalance).toBe(50000);
+      expect(result.balance).toBe(49664.1);
+      expect(result.programName).toBe('50k- Advanced Evaluation');
+      expect(result.nextProgramName).toBe('50k - Advanced Funded');
+      expect(result.tradingDays).toBe(4);
+      expect(result.profitTradingDays).toBe(2);
+      expect(result.withdrawProfitTradingDays).toBe(1);
+      expect(result.activeDays).toBe(3);
+      expect(result.profitSplit).toBe(80);
+      expect(result.drawDown).toBe(0.67);
+      expect(result.maxDrawDown).toBe(1.2);
+    });
   });
 
   describe('listUserAccounts', () => {

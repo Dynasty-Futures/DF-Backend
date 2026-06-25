@@ -107,6 +107,19 @@ export interface PlatformAccountResult {
   margin?: number | undefined;
   startingBalance: number;
   currency: string;
+  /** Program display names — for phase-progression UI (e.g. "50k Funded") */
+  programName?: string | undefined;
+  nextProgramName?: string | undefined;
+  /** Day counters that drive payout/upgrade eligibility */
+  tradingDays?: number | undefined;
+  profitTradingDays?: number | undefined;
+  withdrawProfitTradingDays?: number | undefined;
+  activeDays?: number | undefined;
+  /** Trader's profit-split percentage on this account */
+  profitSplit?: number | undefined;
+  /** Drawdown metrics (current + high-water) */
+  drawDown?: number | undefined;
+  maxDrawDown?: number | undefined;
   /** Provider-issued login credentials surfaced at account creation time */
   loginCredentials?: { login: string; password: string } | undefined;
   /** Provider-specific overflow (e.g. YPF's `extraValues` carrying VolumetricaUserId) */
