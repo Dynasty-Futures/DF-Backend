@@ -245,6 +245,69 @@ describe('YPFProvider', () => {
       expect(result.drawDown).toBe(0.67);
       expect(result.maxDrawDown).toBe(1.2);
     });
+
+    it('enriches day-counters from /rulesdetails and names from the program catalog', async () => {
+      mockGet
+        // base account GET — omits the live fields, as the real API does
+        .mockResolvedValueOnce(
+          makeYpfAccount({
+            programId: 'prog-50k-p1',
+            programName: undefined,
+            nextProgramName: undefined,
+            tradingDays: undefined,
+            profitTradingDays: undefined,
+            profitSplit: undefined,
+          }),
+        )
+        // /rulesdetails
+        .mockResolvedValueOnce({
+          account: {
+            tradingDays: 5,
+            profitTradingDays: 3,
+            withdrawProfitTradingDays: 2,
+            activeDays: 7,
+            profitSplit: 80,
+          },
+        })
+        // /programs catalog (for programName + nextProgramName resolution)
+        .mockResolvedValueOnce([
+          makeYpfProgram({
+            id: 'prog-50k-p1',
+            name: '50k Phase 1',
+            nextProgramId: 'prog-50k-funded',
+          }),
+          makeYpfProgram({
+            id: 'prog-50k-funded',
+            name: '50k Funded',
+            nextProgramId: undefined,
+          }),
+        ]);
+
+      const result = await provider.getAccount('usr-001', 'acc-001');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/users/usr-001/accounts/acc-001/rulesdetails',
+      );
+      expect(result.tradingDays).toBe(5);
+      expect(result.profitTradingDays).toBe(3);
+      expect(result.withdrawProfitTradingDays).toBe(2);
+      expect(result.activeDays).toBe(7);
+      expect(result.profitSplit).toBe(80);
+      expect(result.programName).toBe('50k Phase 1');
+      expect(result.nextProgramName).toBe('50k Funded');
+    });
+
+    it('still returns the base account when enrichment calls fail', async () => {
+      mockGet
+        .mockResolvedValueOnce(makeYpfAccount())
+        .mockRejectedValueOnce(new Error('rulesdetails 500'))
+        .mockRejectedValueOnce(new Error('programs 500'));
+
+      const result = await provider.getAccount('usr-001', 'acc-001');
+
+      expect(result.platformAccountId).toBe('acc-001');
+      expect(result.balance).toBe(50000);
+    });
   });
 
   describe('listUserAccounts', () => {
