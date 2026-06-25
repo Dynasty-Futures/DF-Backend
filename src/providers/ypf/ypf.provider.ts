@@ -41,11 +41,20 @@ interface YPFAccountResponse {
   tradeServer?: string;
   login?: string;
   password?: string;
+  initialBalance?: number;
   balance?: number;
   equity?: number;
   drawDown?: number;
+  maxDrawDown?: number;
   state?: string;
   currency?: string;
+  programName?: string;
+  nextProgramName?: string;
+  tradingDays?: number;
+  profitTradingDays?: number;
+  withdrawProfitTradingDays?: number;
+  activeDays?: number;
+  profitSplit?: number;
   extraValues?: YPFExtraValueEntry[];
 }
 
@@ -132,11 +141,24 @@ const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
     accountName: a.email ?? a.id,
     status: a.state ?? 'Unknown',
     balance: a.balance ?? 0,
-    startingBalance: a.balance ?? 0,
+    // YPF returns initialBalance separately from the live balance; fall back to
+    // balance only when initialBalance is absent.
+    startingBalance: a.initialBalance ?? a.balance ?? 0,
     currency: a.currency ?? 'USD',
   };
   if (a.programId !== undefined) result.programId = a.programId;
   if (a.equity !== undefined) result.equity = a.equity;
+  if (a.drawDown !== undefined) result.drawDown = a.drawDown;
+  if (a.maxDrawDown !== undefined) result.maxDrawDown = a.maxDrawDown;
+  if (a.programName !== undefined) result.programName = a.programName;
+  if (a.nextProgramName !== undefined) result.nextProgramName = a.nextProgramName;
+  if (a.tradingDays !== undefined) result.tradingDays = a.tradingDays;
+  if (a.profitTradingDays !== undefined)
+    result.profitTradingDays = a.profitTradingDays;
+  if (a.withdrawProfitTradingDays !== undefined)
+    result.withdrawProfitTradingDays = a.withdrawProfitTradingDays;
+  if (a.activeDays !== undefined) result.activeDays = a.activeDays;
+  if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
   if (a.login && a.password) {
     result.loginCredentials = { login: a.login, password: a.password };
   }

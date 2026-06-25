@@ -4,7 +4,6 @@ import affiliateRoutes from './affiliates.js';
 import authRoutes from './auth.js';
 import usersRoutes from './users.js';
 import accountsRoutes from './accounts.js';
-import checkoutRoutes from './checkout.js';
 import tradingRoutes from './trading.js';
 import payoutsRoutes from './payouts.js';
 
@@ -24,7 +23,6 @@ router.use('/users', usersRoutes);
 router.use('/support', supportRoutes);
 router.use('/affiliates', affiliateRoutes);
 router.use('/accounts', accountsRoutes);
-router.use('/checkout', checkoutRoutes);
 router.use('/trading', tradingRoutes);
 router.use('/payouts', payoutsRoutes);
 
