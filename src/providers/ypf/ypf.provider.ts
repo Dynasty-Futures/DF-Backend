@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { YPFClient } from './ypf.client.js';
+import { logger } from '../../utils/logger.js';
 import type { TradingPlatformProvider } from '../trading-platform.provider.js';
 import type {
   CreatePlatformUserParams,
@@ -56,6 +57,19 @@ interface YPFAccountResponse {
   activeDays?: number;
   profitSplit?: number;
   extraValues?: YPFExtraValueEntry[];
+}
+
+// `/rulesdetails` returns a far richer `account` object than the plain account
+// GET — notably the live day-counters + profit split that the dashboard tiles
+// need. We only type the subset we surface.
+interface YPFRulesDetailsResponse {
+  account?: {
+    tradingDays?: number;
+    profitTradingDays?: number;
+    withdrawProfitTradingDays?: number;
+    activeDays?: number;
+    profitSplit?: number;
+  };
 }
 
 interface YPFUserResponse {
@@ -249,6 +263,13 @@ const mapPayout = (p: YPFPayoutResponse): PlatformPayoutResult => {
 export class YPFProvider implements TradingPlatformProvider {
   private readonly client: YPFClient;
 
+  // Program id → display name, cached: programs change rarely and resolving
+  // programName/nextProgramName per live-account fetch would otherwise be N calls.
+  private programNameCache: Map<string, { name: string; nextProgramId?: string }> | null =
+    null;
+  private programCacheAt = 0;
+  private static readonly PROGRAM_CACHE_TTL_MS = 5 * 60 * 1000;
+
   constructor(client?: YPFClient) {
     this.client = client ?? new YPFClient();
   }
@@ -308,7 +329,91 @@ export class YPFProvider implements TradingPlatformProvider {
     const res = await this.client.get<YPFAccountResponse>(
       `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}`,
     );
-    return mapAccount(res);
+    const result = mapAccount(res);
+    await this.enrichLiveAccount(
+      platformUserId,
+      platformAccountId,
+      result,
+      res.programId,
+    );
+    return result;
+  }
+
+  /**
+   * The plain account GET omits live day-counters, profit split, and program
+   * display names. Backfill them from `/rulesdetails` + the program catalog so
+   * the dashboard's Account Details tiles render real values. Best-effort: a
+   * failed enrichment never fails the base account fetch.
+   */
+  private async enrichLiveAccount(
+    platformUserId: string,
+    platformAccountId: string,
+    result: PlatformAccountResult,
+    programId?: string,
+  ): Promise<void> {
+    // Day-counters + profit split from /rulesdetails
+    try {
+      const rd = await this.client.get<YPFRulesDetailsResponse>(
+        `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/rulesdetails`,
+      );
+      const a = rd?.account;
+      if (a) {
+        if (a.tradingDays !== undefined) result.tradingDays = a.tradingDays;
+        if (a.profitTradingDays !== undefined)
+          result.profitTradingDays = a.profitTradingDays;
+        if (a.withdrawProfitTradingDays !== undefined)
+          result.withdrawProfitTradingDays = a.withdrawProfitTradingDays;
+        if (a.activeDays !== undefined) result.activeDays = a.activeDays;
+        if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
+      }
+    } catch (err) {
+      logger.warn(
+        { err, platformAccountId },
+        'YPF: failed to enrich account from rulesdetails',
+      );
+    }
+
+    // Program display names (current + next phase) from the program catalog
+    if (programId) {
+      try {
+        const programs = await this.getProgramNameMap();
+        const info = programs.get(programId);
+        if (info?.name) result.programName = info.name;
+        if (info?.nextProgramId) {
+          const nextName = programs.get(info.nextProgramId)?.name;
+          if (nextName) result.nextProgramName = nextName;
+        }
+      } catch (err) {
+        logger.warn(
+          { err, programId },
+          'YPF: failed to resolve program display names',
+        );
+      }
+    }
+  }
+
+  /** Cached program id → {name, nextProgramId} lookup. */
+  private async getProgramNameMap(): Promise<
+    Map<string, { name: string; nextProgramId?: string }>
+  > {
+    const now = Date.now();
+    if (
+      this.programNameCache &&
+      now - this.programCacheAt < YPFProvider.PROGRAM_CACHE_TTL_MS
+    ) {
+      return this.programNameCache;
+    }
+    const programs = await this.listPrograms();
+    const map = new Map<string, { name: string; nextProgramId?: string }>();
+    for (const p of programs) {
+      map.set(p.programId, {
+        name: p.name,
+        ...(p.nextProgramId !== undefined && { nextProgramId: p.nextProgramId }),
+      });
+    }
+    this.programNameCache = map;
+    this.programCacheAt = now;
+    return map;
   }
 
   async listUserAccounts(platformUserId: string): Promise<PlatformAccountResult[]> {
