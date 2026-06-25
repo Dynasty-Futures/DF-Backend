@@ -67,6 +67,18 @@ const requireVolumetricaUserId = async (userId: string): Promise<string> => {
   return account.volumetricaUserId;
 };
 
+// Earliest date to pull trade history from. For accounts created by the pull-
+// based discovery flow, the local `createdAt` is when DF *discovered* the
+// account — which can be later than when it started trading on YPF — so trades
+// would be filtered out. Floor the start at a generous lookback so existing
+// history is always captured.
+const TRADE_HISTORY_LOOKBACK_DAYS = 365;
+const tradeHistoryStart = (accountCreatedAt: Date): Date => {
+  const floor = new Date();
+  floor.setDate(floor.getDate() - TRADE_HISTORY_LOOKBACK_DAYS);
+  return accountCreatedAt < floor ? accountCreatedAt : floor;
+};
+
 // =============================================================================
 // Account Queries
 // =============================================================================
@@ -210,7 +222,7 @@ export const getAccountTrades = async (
       const platformTrades = await provider.getHistoricalTrades(
         account.platformUserId,
         account.platformAccountId,
-        account.createdAt,
+        tradeHistoryStart(account.createdAt),
       );
       await syncService.syncTradesFromPlatform(accountId, platformTrades);
     } catch (err) {
