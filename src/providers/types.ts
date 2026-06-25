@@ -99,6 +99,8 @@ export interface PlatformAccountResult {
   platformUserId: string;
   /** YPF program ID this account belongs to (optional for non-YPF providers) */
   programId?: string | undefined;
+  /** Owner's email on the platform — used to link accounts back to a DF user */
+  email?: string | undefined;
   accountName: string;
   status: string;
   balance: number;
