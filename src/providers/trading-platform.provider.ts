@@ -94,7 +94,7 @@ export interface TradingPlatformProvider {
 
   // ── Tenant-wide Poll ─────────────────────────────────────────────────────
 
-  listTenantAccounts(): Promise<PlatformAccountResult[]>;
+  listTenantAccounts(status?: string): Promise<PlatformAccountResult[]>;
 
   // ── Programs (read-only at runtime; seeded by admin script) ─────────────
 

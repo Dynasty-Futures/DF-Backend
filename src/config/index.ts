@@ -31,6 +31,17 @@ const envSchema = z.object({
   YPF_CLIENT_KEY: z.string().optional(),
   YPF_POLL_CRON: z.string().default('*/1 * * * *'),
 
+  // Account discovery (pull-based provisioning) — links YPF accounts created via
+  // the WooCommerce/Worthy checkout back to DF users. OFF until YPF confirms the
+  // email-match contract and we validate against a real provisioned account.
+  ACCOUNT_DISCOVERY_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  ACCOUNT_DISCOVERY_CRON: z.string().default('*/2 * * * *'),
+  // Comma-separated YPF AccountState values to sweep (e.g. "Active,Upgraded").
+  ACCOUNT_DISCOVERY_STATUSES: z.string().default('Active'),
+
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
@@ -118,6 +129,13 @@ export const config = {
     apiUrl: env.YPF_API_URL,
     clientKey: env.YPF_CLIENT_KEY,
     pollCron: env.YPF_POLL_CRON,
+    discovery: {
+      enabled: env.ACCOUNT_DISCOVERY_ENABLED,
+      cron: env.ACCOUNT_DISCOVERY_CRON,
+      statuses: env.ACCOUNT_DISCOVERY_STATUSES.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    },
   },
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,

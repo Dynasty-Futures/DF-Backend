@@ -351,6 +351,26 @@ describe('YPFProvider', () => {
       expect(mockGet).toHaveBeenCalledWith('/tenant/accounts');
       expect(result).toHaveLength(1);
     });
+
+    it('passes the status filter when provided', async () => {
+      mockGet.mockResolvedValueOnce([makeYpfAccount()]);
+
+      await provider.listTenantAccounts('Active');
+
+      expect(mockGet).toHaveBeenCalledWith('/tenant/accounts', {
+        status: 'Active',
+      });
+    });
+
+    it('maps the owner email for account linkage', async () => {
+      mockGet.mockResolvedValueOnce([
+        makeYpfAccount({ email: 'owner@example.com' }),
+      ]);
+
+      const [account] = await provider.listTenantAccounts();
+
+      expect(account?.email).toBe('owner@example.com');
+    });
   });
 
   // ── Programs ─────────────────────────────────────────────────────────────

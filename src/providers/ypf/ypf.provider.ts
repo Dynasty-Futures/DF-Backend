@@ -147,6 +147,7 @@ const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
     currency: a.currency ?? 'USD',
   };
   if (a.programId !== undefined) result.programId = a.programId;
+  if (a.email !== undefined) result.email = a.email;
   if (a.equity !== undefined) result.equity = a.equity;
   if (a.drawDown !== undefined) result.drawDown = a.drawDown;
   if (a.maxDrawDown !== undefined) result.maxDrawDown = a.maxDrawDown;
@@ -504,8 +505,13 @@ export class YPFProvider implements TradingPlatformProvider {
 
   // ── Tenant-wide ─────────────────────────────────────────────────────────
 
-  async listTenantAccounts(): Promise<PlatformAccountResult[]> {
-    const res = await this.client.get<YPFAccountResponse[]>('/tenant/accounts');
+  async listTenantAccounts(status?: string): Promise<PlatformAccountResult[]> {
+    const res =
+      status !== undefined
+        ? await this.client.get<YPFAccountResponse[]>('/tenant/accounts', {
+            status,
+          })
+        : await this.client.get<YPFAccountResponse[]>('/tenant/accounts');
     return (res ?? []).map(mapAccount);
   }
 
