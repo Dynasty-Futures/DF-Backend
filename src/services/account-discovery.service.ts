@@ -32,11 +32,20 @@ export interface DiscoveryResult {
   failed: number;
 }
 
-// YPF AccountState → whether the account is in its funded (terminal) phase.
-// YPF chains programs via nextProgramId; a program with no successor is the
-// funded program, so an account with no `nextProgramName` is already funded.
-const isFundedPhase = (account: PlatformAccountResult): boolean =>
-  !account.nextProgramName;
+// Whether a program is the funded (terminal) phase. YPF chains programs via
+// `nextProgramId`; the program with no successor is the funded one. NOTE: this
+// MUST be read from the program catalog — the tenant-account / account-GET
+// responses never populate `nextProgramName`, so inferring phase from the
+// account payload alone misclassifies every evaluation account as funded.
+const isFundedProgram = (
+  programId: string | undefined,
+  programHasNext: Map<string, boolean>,
+): boolean => {
+  if (programId === undefined) return false;
+  const hasNext = programHasNext.get(programId);
+  // Unknown program → assume evaluation (safer than mislabeling as funded).
+  return hasNext === false;
+};
 
 /**
  * Sweep YPF tenant accounts and create local rows for any not yet linked to a
@@ -75,9 +84,21 @@ export const discoverAccounts = async (): Promise<DiscoveryResult> => {
 
   result.scanned = accounts.length;
 
+  // Resolve phase from the program catalog: a program with no `nextProgramId`
+  // is the funded/terminal phase. One call, reused across all accounts.
+  const programHasNext = new Map<string, boolean>();
+  try {
+    const programs = await provider.listPrograms();
+    for (const p of programs) {
+      programHasNext.set(p.programId, p.nextProgramId !== undefined);
+    }
+  } catch (err) {
+    logger.warn({ err }, 'account-discovery: failed to load program catalog');
+  }
+
   for (const acct of accounts) {
     try {
-      await discoverOne(acct, result);
+      await discoverOne(acct, result, programHasNext);
     } catch (err) {
       result.failed++;
       logger.error(
@@ -94,6 +115,7 @@ export const discoverAccounts = async (): Promise<DiscoveryResult> => {
 const discoverOne = async (
   acct: PlatformAccountResult,
   result: DiscoveryResult,
+  programHasNext: Map<string, boolean>,
 ): Promise<void> => {
   // 1. Idempotency — already linked locally?
   const existing = await prisma.account.findUnique({
@@ -153,7 +175,7 @@ const discoverOne = async (
   }
 
   // 5. Derive local phase/status from the YPF program chain.
-  const funded = isFundedPhase(acct);
+  const funded = isFundedProgram(acct.programId, programHasNext);
   const phase = funded ? ChallengePhase.FUNDED : ChallengePhase.PHASE_1;
   const status = funded ? AccountStatus.FUNDED : AccountStatus.EVALUATION;
   const phaseRules = accountType.challengeRules.find((r) => r.phase === phase);

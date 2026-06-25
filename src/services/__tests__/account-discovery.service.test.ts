@@ -31,10 +31,12 @@ jest.mock('../../utils/database', () => ({
 }));
 
 const mockListTenantAccounts = jest.fn();
+const mockListPrograms = jest.fn();
 
 jest.mock('../../providers/index', () => ({
   getTradingPlatformProvider: () => ({
     listTenantAccounts: (...args: unknown[]) => mockListTenantAccounts(...args),
+    listPrograms: (...args: unknown[]) => mockListPrograms(...args),
   }),
 }));
 
@@ -96,6 +98,22 @@ beforeEach(() => {
   mockAccountFindUnique.mockResolvedValue(null);
   mockUserFindFirst.mockResolvedValue({ id: 'user-1', platformUserId: null });
   mockAccountTypeFindFirst.mockResolvedValue(accountType);
+  // Program catalog: the eval program chains to a funded program (→ EVALUATION).
+  mockListPrograms.mockResolvedValue([
+    {
+      programId: 'prog-eval-50k',
+      name: '50k Eval',
+      initialBalance: 50000,
+      currency: 'USD',
+      nextProgramId: 'prog-funded-50k',
+    },
+    {
+      programId: 'prog-funded-50k',
+      name: '50k Funded',
+      initialBalance: 50000,
+      currency: 'USD',
+    },
+  ]);
   mockTxAccountCreate.mockResolvedValue({ id: 'local-acc-1' });
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
     cb({
@@ -154,9 +172,36 @@ describe('discoverAccounts', () => {
     });
   });
 
-  it('treats an account with no nextProgramName as funded', async () => {
+  it('classifies as evaluation from the program catalog even when the account omits nextProgramName', async () => {
+    // Regression: the tenant-list / account-GET responses never populate
+    // nextProgramName, so phase MUST come from the program catalog. The eval
+    // program (default mock) chains to a funded program → EVALUATION.
     mockListTenantAccounts.mockResolvedValue([
       ypfAccount({ nextProgramName: undefined }),
+    ]);
+
+    await discoverAccounts();
+
+    expect(mockTxAccountCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: AccountStatus.EVALUATION }),
+    });
+    expect(mockTxChallengeCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ phase: ChallengePhase.PHASE_1 }),
+    });
+  });
+
+  it('treats an account whose program has no next phase as funded', async () => {
+    mockListTenantAccounts.mockResolvedValue([
+      ypfAccount({ nextProgramName: undefined }),
+    ]);
+    // Program with no nextProgramId → funded/terminal phase.
+    mockListPrograms.mockResolvedValue([
+      {
+        programId: 'prog-eval-50k',
+        name: '50k Funded',
+        initialBalance: 50000,
+        currency: 'USD',
+      },
     ]);
 
     const result = await discoverAccounts();
