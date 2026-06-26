@@ -31,6 +31,17 @@ const envSchema = z.object({
   YPF_CLIENT_KEY: z.string().optional(),
   YPF_POLL_CRON: z.string().default('*/1 * * * *'),
 
+  // Pre-create the YPF (trading-platform) user at DF signup so the DF↔YPF
+  // linkage is deterministic (User.platformUserId known up front) and accounts
+  // can be provisioned/discovered without waiting on the WooCommerce checkout.
+  // Fire-and-forget — registration never blocks on or fails because of YPF.
+  // OFF by default until YPF confirms it de-dupes a later purchase onto the
+  // pre-created user (matched by email + extEntityId) rather than duplicating.
+  YPF_AUTO_CREATE_USERS: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
   // Account discovery (pull-based provisioning) — links YPF accounts created via
   // the WooCommerce/Worthy checkout back to DF users. OFF until YPF confirms the
   // email-match contract and we validate against a real provisioned account.
@@ -139,6 +150,7 @@ export const config = {
     apiUrl: env.YPF_API_URL,
     clientKey: env.YPF_CLIENT_KEY,
     pollCron: env.YPF_POLL_CRON,
+    autoCreateUsers: env.YPF_AUTO_CREATE_USERS,
     discovery: {
       enabled: env.ACCOUNT_DISCOVERY_ENABLED,
       cron: env.ACCOUNT_DISCOVERY_CRON,

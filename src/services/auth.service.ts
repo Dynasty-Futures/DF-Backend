@@ -38,6 +38,7 @@ import {
   type SafeUser,
 } from '../repositories/auth.repository.js';
 import { sendPasswordResetEmail } from './email.service.js';
+import { ensurePlatformUserAsync } from './user.service.js';
 import type { JwtPayload } from '../api/middleware/auth.js';
 
 // =============================================================================
@@ -196,6 +197,10 @@ export const register = async (input: RegisterInput): Promise<AuthResult> => {
   });
 
   logger.info({ userId: user.id, email: user.email }, 'New user registered');
+
+  // Pre-create the trading-platform (YPF) user. Fire-and-forget + gated — never
+  // blocks or fails registration (see ensurePlatformUserAsync).
+  ensurePlatformUserAsync(user.id);
 
   // Mint a session ID up-front so it can be embedded in tokens AND used as the
   // Session row's PK. This keeps token.sid === Session.id, which is how the
@@ -442,6 +447,10 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResult> =>
         { userId: user.id, email: googleEmail },
         'New user registered via Google SSO'
       );
+
+      // Pre-create the trading-platform (YPF) user for genuinely new signups
+      // only. Fire-and-forget + gated — never blocks or fails auth.
+      ensurePlatformUserAsync(user.id);
     }
   }
 

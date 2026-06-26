@@ -130,6 +130,9 @@ describe('YPFProvider', () => {
         lastName: 'Tester',
         country: 'US',
         phone: '+15555550100',
+        externalId: 'df-user-123',
+        programId: 'prog-50k-p1',
+        tradeServer: 'Volumetrica',
       });
 
       expect(mockPost).toHaveBeenCalledWith('/users', {
@@ -137,8 +140,11 @@ describe('YPFProvider', () => {
         firstname: 'Sam',
         lastname: 'Tester',
         country: 'US',
+        programId: 'prog-50k-p1',
+        mtVersion: 'Volumetrica',
         isRegisterUserOnly: true,
         phone: '+15555550100',
+        extEntityId: 'df-user-123',
       });
       expect(result.platformUserId).toBe('usr-001');
       expect(result.email).toBe('trader@example.com');

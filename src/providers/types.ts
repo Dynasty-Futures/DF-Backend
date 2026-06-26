@@ -21,6 +21,14 @@ export interface CreatePlatformUserParams {
   language?: string | undefined;
   /** Your internal user ID — stored as extEntityId on the platform */
   externalId?: string | undefined;
+  /**
+   * YPF program id. REQUIRED by YPF's `POST /users` even for register-only
+   * creation (`isRegisterUserOnly`) — the schema mandates a program, though no
+   * account is provisioned when register-only is set.
+   */
+  programId?: string | undefined;
+  /** Trade server version (`mtVersion`), e.g. 'Volumetrica'. Required by POST /users. */
+  tradeServer?: string | undefined;
 }
 
 export interface UpdatePlatformUserParams {

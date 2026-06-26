@@ -286,11 +286,21 @@ export class YPFProvider implements TradingPlatformProvider {
   // ── User ─────────────────────────────────────────────────────────────────
 
   async createUser(params: CreatePlatformUserParams): Promise<PlatformUserResult> {
+    // YPF's POST /users mandates programId + mtVersion even for register-only
+    // creation. With isRegisterUserOnly the program is NOT provisioned into an
+    // account — it only satisfies request validation.
+    if (!params.programId) {
+      throw new Error(
+        'YPF createUser requires a programId (POST /users mandates it even for register-only)',
+      );
+    }
     const body: Record<string, unknown> = {
       email: params.email,
       firstname: params.firstName,
       lastname: params.lastName,
       country: params.country,
+      programId: params.programId,
+      mtVersion: params.tradeServer ?? 'Volumetrica',
       isRegisterUserOnly: true,
     };
     if (params.phone !== undefined) body['phone'] = params.phone;
@@ -298,6 +308,9 @@ export class YPFProvider implements TradingPlatformProvider {
     if (params.postalCode !== undefined) body['zipCode'] = params.postalCode;
     if (params.city !== undefined) body['city'] = params.city;
     if (params.language !== undefined) body['language'] = params.language;
+    // Stamp our DF user id as the platform's external entity id — the dedup key
+    // YPF can use to reconcile a later WooCommerce purchase onto this user.
+    if (params.externalId !== undefined) body['extEntityId'] = params.externalId;
 
     const res = await this.client.post<YPFUserResponse>('/users', body);
     return mapUser(res);
