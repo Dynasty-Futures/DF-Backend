@@ -27,11 +27,24 @@ const ACTIVE_STATUSES: AccountStatus[] = [
   AccountStatus.FUNDED,
 ];
 
-// YPF AccountState values to pull each poll. /tenant/accounts requires a status
-// filter, so we sweep these and merge: Active + Breached reconcile our live
-// accounts (incl. just-passed funded accounts, still reported Active), and
-// Disabled feeds the soft-delete cleanup.
-const POLL_STATUSES = ['Active', 'Breached', 'Disabled'];
+// Every YPF AccountState value. /tenant/accounts requires a status filter (a
+// no-arg call 400s), so we sweep them all and merge. We need the COMPLETE set,
+// not just Active/Breached/Disabled, for two reasons:
+//   1. Active + Breached reconcile our live accounts (incl. just-passed funded
+//      accounts, still reported Active).
+//   2. The removal cleanup treats "absent from every status list" as removed
+//      upstream — so we must query every state an account could legitimately be
+//      in (Inactive/Pending/Upgraded) or we'd wrongly delete those.
+// NB: YPF drops permanently-removed accounts from ALL lists (the Disabled list
+// comes back empty), so absence — not a "Disabled" flag — is the real signal.
+const POLL_STATUSES = [
+  'Active',
+  'Breached',
+  'Disabled',
+  'Inactive',
+  'Pending',
+  'Upgraded',
+];
 
 const readLastPollAt = async (): Promise<Date | undefined> => {
   try {
@@ -57,29 +70,39 @@ const writeLastPollAt = async (when: Date): Promise<void> => {
   }
 };
 
-// Soft-delete every non-deleted local account that YPF reports as Disabled
-// (permanently removed upstream). Uses the bulk live map so it covers ALL local
-// accounts — active and already-failed — in one pass.
-const removeDisabledAccounts = async (
+// Soft-delete local accounts that YPF has removed upstream — either explicitly
+// `Disabled`, or absent from EVERY status list (YPF drops removed accounts
+// entirely; the Disabled list comes back empty). Covers ALL local accounts in
+// one pass — active and already-failed alike.
+//
+// `sweepComplete` = every status query in the bulk fetch succeeded. We only act
+// on absence when the snapshot is trustworthy (sweep complete AND it returned
+// at least one account), so a transient YPF outage can't wipe healthy accounts.
+export const reconcileRemovedAccounts = async (
+  localAccounts: { id: string; platformAccountId: string | null }[],
   liveByPlatformId: Map<string, PlatformAccountResult>,
+  sweepComplete: boolean,
 ): Promise<void> => {
-  const locals = await prisma.account.findMany({
-    where: { deletedAt: null, platformAccountId: { not: null } },
-    select: { id: true, platformAccountId: true },
-  });
+  const canTrustAbsence = sweepComplete && liveByPlatformId.size > 0;
 
   let removed = 0;
-  for (const a of locals) {
+  for (const a of localAccounts) {
     if (!a.platformAccountId) continue;
     const live = liveByPlatformId.get(a.platformAccountId);
-    if (live && ypfSyncService.isYpfDisabledState(live.status)) {
+    const explicitlyDisabled =
+      live !== undefined && ypfSyncService.isYpfDisabledState(live.status);
+    const removedUpstream = live === undefined && canTrustAbsence;
+    if (explicitlyDisabled || removedUpstream) {
       await ypfSyncService.softDeleteRemovedAccount(a.id);
       removed++;
     }
   }
 
   if (removed > 0) {
-    logger.info({ removed }, 'YPF poll: soft-deleted disabled accounts');
+    logger.info(
+      { removed },
+      'YPF poll: soft-deleted accounts removed upstream',
+    );
   }
 };
 
@@ -99,22 +122,24 @@ export const runYPFPoll = async (): Promise<void> => {
 
   logger.debug({ lastPollAt }, 'YPF poll: starting');
 
-  const activeAccounts = await prisma.account.findMany({
+  // ALL non-deleted local accounts (not just active) — the removal reconcile
+  // below must see failed/closed rows too, since a user whose accounts are all
+  // breached has zero "active" accounts but can still accumulate stale rows.
+  const localAccounts = await prisma.account.findMany({
     where: {
-      status: { in: ACTIVE_STATUSES },
       deletedAt: null,
       platformAccountId: { not: null },
-      platformUserId: { not: null },
     },
     select: {
       id: true,
+      status: true,
       platformAccountId: true,
       platformUserId: true,
     },
   });
 
-  if (activeAccounts.length === 0) {
-    logger.debug('YPF poll: no active accounts to poll');
+  if (localAccounts.length === 0) {
+    logger.debug('YPF poll: no local accounts to reconcile');
     await syncPayoutsSafe();
     await writeLastPollAt(startedAt);
     return;
@@ -122,66 +147,73 @@ export const runYPFPoll = async (): Promise<void> => {
 
   const provider = getTradingPlatformProvider();
 
-  // Bulk-fetch live accounts. YPF's /tenant/accounts REQUIRES a status filter
-  // (a no-arg call 400s), so sweep the relevant statuses and merge: Active +
-  // Breached cover our active local accounts and just-passed (still-Active)
-  // funded accounts, and Disabled feeds the removal cleanup below.
+  // Bulk-fetch live accounts across EVERY YPF status (a no-arg /tenant/accounts
+  // 400s). Track whether every query succeeded — the removal reconcile only
+  // trusts "absent" when the sweep was complete, so an API blip can't mass-wipe.
   const liveByPlatformId = new Map<string, PlatformAccountResult>();
+  let sweepComplete = true;
   for (const status of POLL_STATUSES) {
-    const batch = await provider.listTenantAccounts(status).catch((err) => {
-      logger.warn({ err, status }, 'YPF poll: listTenantAccounts failed');
-      return [] as PlatformAccountResult[];
-    });
-    for (const a of batch) {
-      if (!liveByPlatformId.has(a.platformAccountId)) {
-        liveByPlatformId.set(a.platformAccountId, a);
+    try {
+      const batch = await provider.listTenantAccounts(status);
+      for (const a of batch) {
+        if (!liveByPlatformId.has(a.platformAccountId)) {
+          liveByPlatformId.set(a.platformAccountId, a);
+        }
       }
+    } catch (err) {
+      sweepComplete = false;
+      logger.warn({ err, status }, 'YPF poll: listTenantAccounts failed');
     }
   }
 
-  // Remove accounts that YPF has disabled (permanently removed upstream),
-  // regardless of local status — including already-failed accounts that the
-  // active-status poll below never revisits.
-  await removeDisabledAccounts(liveByPlatformId);
+  // Soft-delete accounts YPF removed (Disabled or absent from every list) —
+  // runs for ALL local accounts, including ones with no active rows to poll.
+  await reconcileRemovedAccounts(localAccounts, liveByPlatformId, sweepComplete);
 
-  // Scope the breach query to active accounts only
-  const platformAccountIds = activeAccounts
-    .map((a) => a.platformAccountId)
-    .filter((id): id is string => id !== null);
-
-  const breaches = await provider
-    .getTenantBreaches(platformAccountIds, lastPollAt)
-    .catch((err) => {
-      logger.warn({ err }, 'YPF poll: getTenantBreaches failed');
-      return [];
-    });
-  const breachesByPlatformId = new Map<
-    string,
-    Awaited<ReturnType<typeof provider.getTenantBreaches>>
-  >();
-  for (const b of breaches) {
-    const list = breachesByPlatformId.get(b.platformAccountId) ?? [];
-    list.push(b);
-    breachesByPlatformId.set(b.platformAccountId, list);
-  }
+  // Per-account breach/transition sync only applies to still-active accounts.
+  const activeAccounts = localAccounts.filter(
+    (a) => ACTIVE_STATUSES.includes(a.status) && a.platformUserId !== null,
+  );
 
   let processed = 0;
-  for (const acct of activeAccounts) {
-    if (!acct.platformAccountId) continue;
-    const live = liveByPlatformId.get(acct.platformAccountId);
-    const localBreaches = breachesByPlatformId.get(acct.platformAccountId);
-    try {
-      await ypfSyncService.syncAccountFromYPF({
-        localAccountId: acct.id,
-        ...(live && { liveAccount: live }),
-        ...(localBreaches && { liveBreaches: localBreaches }),
+  if (activeAccounts.length > 0) {
+    const platformAccountIds = activeAccounts
+      .map((a) => a.platformAccountId)
+      .filter((id): id is string => id !== null);
+
+    const breaches = await provider
+      .getTenantBreaches(platformAccountIds, lastPollAt)
+      .catch((err) => {
+        logger.warn({ err }, 'YPF poll: getTenantBreaches failed');
+        return [];
       });
-      processed++;
-    } catch (err) {
-      logger.error(
-        { err, localAccountId: acct.id },
-        'YPF poll: per-account sync failed',
-      );
+    const breachesByPlatformId = new Map<
+      string,
+      Awaited<ReturnType<typeof provider.getTenantBreaches>>
+    >();
+    for (const b of breaches) {
+      const list = breachesByPlatformId.get(b.platformAccountId) ?? [];
+      list.push(b);
+      breachesByPlatformId.set(b.platformAccountId, list);
+    }
+
+    for (const acct of activeAccounts) {
+      if (!acct.platformAccountId) continue;
+      const live = liveByPlatformId.get(acct.platformAccountId);
+      const localBreaches = breachesByPlatformId.get(acct.platformAccountId);
+      try {
+        await ypfSyncService.syncAccountFromYPF({
+          localAccountId: acct.id,
+          ...(live && { liveAccount: live }),
+          ...(localBreaches && { liveBreaches: localBreaches }),
+        });
+        processed++;
+      } catch (err) {
+        logger.error(
+          { err, localAccountId: acct.id },
+          'YPF poll: per-account sync failed',
+        );
+      }
     }
   }
 
@@ -191,7 +223,8 @@ export const runYPFPoll = async (): Promise<void> => {
   logger.info(
     {
       processed,
-      total: activeAccounts.length,
+      activeTotal: activeAccounts.length,
+      localTotal: localAccounts.length,
       durationMs: Date.now() - startedAt.getTime(),
     },
     'YPF poll: complete',
