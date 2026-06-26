@@ -154,6 +154,12 @@ variable "frontend_url" {
   default     = "https://www.dynastyfuturesdyn.com"
 }
 
+variable "account_discovery_enabled" {
+  description = "Enable the pull-based YPF account-discovery cron in prod."
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Stripe
 # -----------------------------------------------------------------------------

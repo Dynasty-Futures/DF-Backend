@@ -218,10 +218,11 @@ module "ecs" {
   desired_count = var.ecs_api_desired_count
 
   # Application config
-  node_env     = "production"
-  log_level    = "info"
-  cors_origin  = var.cors_origin
-  frontend_url = var.frontend_url
+  node_env                  = "production"
+  log_level                 = "info"
+  cors_origin               = var.cors_origin
+  frontend_url              = var.frontend_url
+  account_discovery_enabled = var.account_discovery_enabled
 }
 
 # -----------------------------------------------------------------------------

@@ -244,6 +244,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "LOG_LEVEL", value = var.log_level },
         { name = "CORS_ORIGIN", value = var.cors_origin },
         { name = "FRONTEND_URL", value = var.frontend_url },
+        { name = "ACCOUNT_DISCOVERY_ENABLED", value = tostring(var.account_discovery_enabled) },
       ]
 
       # Secrets (injected from Secrets Manager at task start)

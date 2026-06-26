@@ -63,6 +63,10 @@ ecs_api_desired_count = 2    # 2 tasks for high availability
 
 cors_origin = "http://localhost:8080,http://localhost:3001,http://localhost:5173,https://www.dynastyfuturesdyn.com,https://dynastyfuturesdyn.com"
 
+# Pull-based YPF account discovery. Enable once AccountTypes are seeded against
+# the prod tenant's program IDs and the startingBalance fix is deployed.
+account_discovery_enabled = true
+
 # -----------------------------------------------------------------------------
 # Domain & HTTPS
 # -----------------------------------------------------------------------------
