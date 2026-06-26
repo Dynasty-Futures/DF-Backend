@@ -153,6 +153,7 @@ model User {
   supportTickets SupportTicket[] @relation("TicketCreator")
   assignedTickets SupportTicket[] @relation("TicketAssignee")
   affiliateApplications AffiliateApplication[] @relation("AffiliateApplicant")
+  journalEntries JournalEntry[]
 
   @@index([email])
   @@index([status])
@@ -385,6 +386,7 @@ model Account {
   payouts        Payout[]
   tradingDayLogs TradingDay[]
   adminNotes     AdminNote[]
+  journalEntries JournalEntry[]
 
   @@index([userId])
   @@index([status])
@@ -455,6 +457,28 @@ model TradingDay {
   @@index([accountId])
   @@index([date])
   @@map("trading_days")
+}
+
+// Trader-authored journal notes, one per account per calendar day. Persisted
+// server-side (was localStorage) so notes follow the trader across devices.
+model JournalEntry {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  accountId String   @map("account_id")
+  date      DateTime @db.Date
+  content   String   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([userId])
+  @@index([accountId])
+  @@map("journal_entries")
 }
 
 // =============================================================================
