@@ -180,8 +180,13 @@ const discoverOne = async (
   const status = funded ? AccountStatus.FUNDED : AccountStatus.EVALUATION;
   const phaseRules = accountType.challengeRules.find((r) => r.phase === phase);
 
-  const startingBalance = acct.startingBalance ?? Number(accountType.accountSize);
+  // Anchor the starting balance to the AccountType's face value, NOT YPF's
+  // `initialBalance` — that field is unreliable (it tracks the live balance on
+  // some reads), which would skew Closed P&L, drawdown, and progress-to-target.
+  // The account's true starting balance is its program/plan face value.
+  const startingBalance = Number(accountType.accountSize);
   const currentBalance = acct.balance ?? startingBalance;
+  const highWaterMark = Math.max(startingBalance, currentBalance);
   const volumetricaUserId =
     (acct.extraValues?.['VolumetricaUserId'] as string | undefined) ?? undefined;
 
@@ -201,7 +206,7 @@ const discoverOne = async (
         status,
         startingBalance,
         currentBalance,
-        highWaterMark: currentBalance,
+        highWaterMark,
         platformAccountId: acct.platformAccountId,
         platformUserId: acct.platformUserId,
         ...(funded && { fundedAt: new Date() }),
