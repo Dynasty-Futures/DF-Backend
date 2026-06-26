@@ -24,6 +24,24 @@ import type {
 const YPF_BREACHED = ['Breached', 'breached'];
 const YPF_UPGRADED = ['Upgraded', 'upgraded'];
 const YPF_FUNDED = ['Funded', 'funded'];
+// "Disabled" means the account was permanently removed on YPF (e.g. lapsed/
+// cancelled). We mirror that by soft-deleting locally so it drops off the
+// dashboard entirely — only active/inactive (breached) accounts should show.
+const YPF_DISABLED = ['Disabled', 'disabled'];
+
+/** Whether a YPF account state means the account was removed upstream. */
+export const isYpfDisabledState = (state: string): boolean =>
+  YPF_DISABLED.includes(state);
+
+/** Soft-delete a local account that no longer exists on YPF (idempotent). */
+export const softDeleteRemovedAccount = async (
+  localAccountId: string,
+): Promise<void> => {
+  await prisma.account.update({
+    where: { id: localAccountId },
+    data: { deletedAt: new Date(), status: AccountStatus.CLOSED },
+  });
+};
 
 // Local statuses that should never be overwritten by a YPF poll.
 const TERMINAL_STATUSES = new Set<AccountStatus>([
@@ -95,10 +113,24 @@ export const syncAccountFromYPF = async ({
     return;
   }
 
+  const upstreamState = live.status;
+
+  // Disabled on YPF = permanently removed. Soft-delete and stop — no point
+  // syncing balance or running transitions on an account that no longer exists
+  // upstream. Once deletedAt is set it drops out of the poller query and the
+  // dashboard (both filter deletedAt: null).
+  if (isYpfDisabledState(upstreamState)) {
+    await softDeleteRemovedAccount(localAccountId);
+    logger.info(
+      { localAccountId, platformAccountId: account.platformAccountId },
+      'syncAccountFromYPF: YPF account disabled — soft-deleted locally',
+    );
+    return;
+  }
+
   // Persist balance / metadata first so transition logic sees fresh DB state.
   await syncService.syncAccountFromPlatform(localAccountId, live);
 
-  const upstreamState = live.status;
   const isBreached = YPF_BREACHED.includes(upstreamState);
   const isUpgrade =
     YPF_UPGRADED.includes(upstreamState) ||

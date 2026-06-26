@@ -50,6 +50,32 @@ const writeLastPollAt = async (when: Date): Promise<void> => {
   }
 };
 
+// Soft-delete every non-deleted local account that YPF reports as Disabled
+// (permanently removed upstream). Uses the bulk live map so it covers ALL local
+// accounts — active and already-failed — in one pass.
+const removeDisabledAccounts = async (
+  liveByPlatformId: Map<string, { status: string }>,
+): Promise<void> => {
+  const locals = await prisma.account.findMany({
+    where: { deletedAt: null, platformAccountId: { not: null } },
+    select: { id: true, platformAccountId: true },
+  });
+
+  let removed = 0;
+  for (const a of locals) {
+    if (!a.platformAccountId) continue;
+    const live = liveByPlatformId.get(a.platformAccountId);
+    if (live && ypfSyncService.isYpfDisabledState(live.status)) {
+      await ypfSyncService.softDeleteRemovedAccount(a.id);
+      removed++;
+    }
+  }
+
+  if (removed > 0) {
+    logger.info({ removed }, 'YPF poll: soft-deleted disabled accounts');
+  }
+};
+
 // Mirror YPF payout state (approved/rejected in the CRM) into local records.
 // Isolated so a payout-sync failure never aborts the account poll.
 const syncPayoutsSafe = async (): Promise<void> => {
@@ -97,6 +123,11 @@ export const runYPFPoll = async (): Promise<void> => {
   const liveByPlatformId = new Map(
     liveAccounts.map((a) => [a.platformAccountId, a]),
   );
+
+  // Remove accounts that YPF has disabled (permanently removed upstream),
+  // regardless of local status — including already-failed accounts that the
+  // active-status poll below never revisits.
+  await removeDisabledAccounts(liveByPlatformId);
 
   // Scope the breach query to active accounts only
   const platformAccountIds = activeAccounts
