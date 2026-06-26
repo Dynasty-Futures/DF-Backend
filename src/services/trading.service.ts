@@ -10,10 +10,8 @@ import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { NotFoundError, ForbiddenError, PlatformError } from '../utils/errors.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
-import {
-  getVolumetricaLoginUrl,
-  getVolumetricaIFrameUrl,
-} from '../providers/volumetrica/volumetrica-sso.js';
+import { getVolumetricaIFrameUrl } from '../providers/volumetrica/volumetrica-sso.js';
+import { config } from '../config/index.js';
 import * as syncService from './sync.service.js';
 
 // =============================================================================
@@ -268,10 +266,13 @@ export const getDashboardUrl = async (userId: string) => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new NotFoundError('User not found');
 
-  requirePlatformUserId(user);
-  const volumetricaUserId = await requireVolumetricaUserId(userId);
-
-  return { url: await getVolumetricaLoginUrl(volumetricaUserId) };
+  // The "Launch Platform" button sends the trader to the hosted Volumetrica
+  // portal, where they self-authenticate with the email + per-account password
+  // surfaced on their dashboard. We deliberately do NOT mint an SSO token here:
+  // our Propsite key authenticates to the wrong Volumetrica org for
+  // YPF-provisioned traders ("User not found"), so token minting is dead. The
+  // static portal login URL is the working path.
+  return { url: config.volumetrica.portalUrl };
 };
 
 export const getIFrameUrl = async (
@@ -300,18 +301,19 @@ export const getIFrameUrl = async (
       );
     }
     volumetricaUserId = account.volumetricaUserId;
-    // VolumetricaAccountId is also surfaced via extraValues; we'd need to fetch it
-    // live since we don't currently persist it. Skip for now — login URL alone suffices
-    // for the trader-dashboard use case.
-    volumetricaAccountId = undefined;
+    // Scope the embed to this specific Volumetrica account (the GUID, persisted
+    // from YPF extraValues) so the trader lands on the right account.
+    volumetricaAccountId = account.volumetricaAccountId ?? undefined;
   } else {
     volumetricaUserId = await requireVolumetricaUserId(userId);
   }
 
+  // Embed the full Volumetrica web trading app (the same surface YPF's
+  // white-label embeds), not the read-only dashboard widget.
   return {
     url: await getVolumetricaIFrameUrl(
       volumetricaUserId,
-      undefined,
+      'webApp',
       volumetricaAccountId,
     ),
   };

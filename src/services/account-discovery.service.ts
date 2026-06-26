@@ -260,8 +260,12 @@ const discoverOne = async (
   const startingBalance = Number(accountType.accountSize);
   const currentBalance = acct.balance ?? startingBalance;
   const highWaterMark = Math.max(startingBalance, currentBalance);
-  const volumetricaUserId =
-    (acct.extraValues?.['VolumetricaUserId'] as string | undefined) ?? undefined;
+  const extras = acct.extraValues ?? {};
+  const volumetricaUserId = extras['VolumetricaUserId'] as string | undefined;
+  const volumetricaAccountId = extras['VolumetricaAccountId'] as string | undefined;
+  const volumetricaAccountNumber = extras['VolumetricaAccountNumber'] as
+    | string
+    | undefined;
 
   // 6. Create local Account + Challenge, and backfill the user's platformUserId.
   await prisma.$transaction(async (tx) => {
@@ -288,6 +292,8 @@ const discoverOne = async (
           failedReason: 'Account breached on the trading platform',
         }),
         ...(volumetricaUserId && { volumetricaUserId }),
+        ...(volumetricaAccountId && { volumetricaAccountId }),
+        ...(volumetricaAccountNumber && { volumetricaAccountNumber }),
       },
     });
 

@@ -25,9 +25,14 @@ import type {
 
 // ── YPF raw response shapes (subset — only fields we map) ───────────────────
 
+// NOTE: YPF returns extraValues entries with LOWERCASE `key`/`value` keys —
+// e.g. { key: "VolumetricaUserId", value: "..." }. (The OpenAPI doc capitalised
+// them, which is wrong.) Reading `entry.Key` yields undefined and silently
+// drops every extraValue — that broke VolumetricaUserId capture and the trade
+// embed. Match the wire format exactly.
 interface YPFExtraValueEntry {
-  Key: string;
-  Value: string;
+  key: string;
+  value: string;
 }
 
 interface YPFAccountResponse {
@@ -143,7 +148,7 @@ const flattenExtraValues = (
   if (!arr || arr.length === 0) return undefined;
   const out: Record<string, string> = {};
   for (const entry of arr) {
-    if (entry?.Key) out[entry.Key] = entry.Value ?? '';
+    if (entry?.key) out[entry.key] = entry.value ?? '';
   }
   return out;
 };
@@ -174,8 +179,12 @@ const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
     result.withdrawProfitTradingDays = a.withdrawProfitTradingDays;
   if (a.activeDays !== undefined) result.activeDays = a.activeDays;
   if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
-  if (a.login && a.password) {
-    result.loginCredentials = { login: a.login, password: a.password };
+  // The trading platform's "Login ID" is the trader's EMAIL (what the hosted
+  // Volumetrica portal prompts for), not YPF's internal account login id. Fall
+  // back to a.login only when the account has no email.
+  const platformLogin = a.email ?? a.login;
+  if (platformLogin && a.password) {
+    result.loginCredentials = { login: platformLogin, password: a.password };
   }
   const extras = flattenExtraValues(a.extraValues);
   if (extras) result.extraValues = extras;

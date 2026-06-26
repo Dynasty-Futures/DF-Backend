@@ -55,10 +55,13 @@ export const syncAccountFromPlatform = async (
     'Syncing account from platform',
   );
 
-  // Surface VolumetricaUserId from extraValues if it just arrived
-  const volumetricaUserId =
-    (platformData.extraValues?.['VolumetricaUserId'] as string | undefined) ??
-    undefined;
+  // Surface Volumetrica identifiers from extraValues if they just arrived.
+  const extras = platformData.extraValues ?? {};
+  const volumetricaUserId = extras['VolumetricaUserId'] as string | undefined;
+  const volumetricaAccountId = extras['VolumetricaAccountId'] as string | undefined;
+  const volumetricaAccountNumber = extras['VolumetricaAccountNumber'] as
+    | string
+    | undefined;
 
   await prisma.account.update({
     where: { id: localAccountId },
@@ -67,6 +70,8 @@ export const syncAccountFromPlatform = async (
       platformAccountId: platformData.platformAccountId,
       platformUserId: platformData.platformUserId,
       ...(volumetricaUserId && { volumetricaUserId }),
+      ...(volumetricaAccountId && { volumetricaAccountId }),
+      ...(volumetricaAccountNumber && { volumetricaAccountNumber }),
       updatedAt: new Date(),
     },
   });
