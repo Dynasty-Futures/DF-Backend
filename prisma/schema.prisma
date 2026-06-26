@@ -342,6 +342,11 @@ model Account {
   platformAccountId String? @unique @map("platform_account_id")
   platformUserId    String? @map("platform_user_id")     // denormalized from User.platformUserId for poller efficiency
   volumetricaUserId String? @map("volumetrica_user_id")  // persisted from YPF extraValues; used for Volumetrica SSO
+  // Volumetrica account identifiers (from YPF extraValues) for the trade embed.
+  // AccountId is the Volumetrica GUID; AccountNumber is the numeric id used as
+  // the webapp `tradingAccountId` query param.
+  volumetricaAccountId     String? @map("volumetrica_account_id")
+  volumetricaAccountNumber String? @map("volumetrica_account_number")
 
   status        AccountStatus @default(EVALUATION)
   

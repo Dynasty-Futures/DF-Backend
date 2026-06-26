@@ -47,6 +47,14 @@ const envSchema = z.object({
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
+  // Hosted Volumetrica login portal (white-labeled web-trader). Traders
+  // self-authenticate here with their email + per-account password, so no SSO
+  // token is minted — our Propsite key targets the wrong Volumetrica org for
+  // YPF-provisioned traders, so the static portal URL is the working entry point.
+  VOLUMETRICA_PORTAL_URL: z
+    .string()
+    .url()
+    .default('https://volumetrica.dynastyfuturesdyn.com/'),
 
   // Google OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -142,6 +150,7 @@ export const config = {
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,
     apiKey: env.VOLUMETRICA_API_KEY,
+    portalUrl: env.VOLUMETRICA_PORTAL_URL,
   },
 
   // Google OAuth

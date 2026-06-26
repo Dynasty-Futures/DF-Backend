@@ -61,9 +61,11 @@ const makeYpfAccount = (overrides: Record<string, unknown> = {}) => ({
   drawDown: 0,
   state: 'Active',
   currency: 'USD',
+  // YPF returns extraValues with lowercase key/value (the wire format).
   extraValues: [
-    { Key: 'VolumetricaUserId', Value: 'vol-uuid-deadbeef' },
-    { Key: 'VolumetricaAccountId', Value: 'vol-acc-9001' },
+    { key: 'VolumetricaUserId', value: 'vol-uuid-deadbeef' },
+    { key: 'VolumetricaAccountId', value: 'vol-acc-9001' },
+    { key: 'VolumetricaAccountNumber', value: '46' },
   ],
   ...overrides,
 });
@@ -180,14 +182,17 @@ describe('YPFProvider', () => {
       expect(result.platformAccountId).toBe('acc-001');
       expect(result.platformUserId).toBe('usr-001');
       expect(result.programId).toBe('prog-50k-p1');
+      // Login ID surfaced to the trader is their email (what the Volumetrica
+      // portal prompts for), not YPF's internal account login id.
       expect(result.loginCredentials).toEqual({
-        login: 'VOL-LOGIN-123',
+        login: 'trader@example.com',
         password: 'pwd-abc',
       });
       // Flat extraValues — VolumetricaUserId is what drives SSO
       expect(result.extraValues).toEqual({
         VolumetricaUserId: 'vol-uuid-deadbeef',
         VolumetricaAccountId: 'vol-acc-9001',
+        VolumetricaAccountNumber: '46',
       });
     });
 
