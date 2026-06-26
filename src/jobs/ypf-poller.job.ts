@@ -16,6 +16,7 @@ import { getTradingPlatformProvider } from '../providers/index.js';
 import { getRedisClient } from '../utils/redis.js';
 import * as ypfSyncService from '../services/ypf-sync.service.js';
 import * as payoutService from '../services/payout.service.js';
+import type { PlatformAccountResult } from '../providers/types.js';
 
 const LAST_POLL_KEY = 'ypf:poller:lastPollAt';
 
@@ -25,6 +26,12 @@ const ACTIVE_STATUSES: AccountStatus[] = [
   AccountStatus.PASSED,
   AccountStatus.FUNDED,
 ];
+
+// YPF AccountState values to pull each poll. /tenant/accounts requires a status
+// filter, so we sweep these and merge: Active + Breached reconcile our live
+// accounts (incl. just-passed funded accounts, still reported Active), and
+// Disabled feeds the soft-delete cleanup.
+const POLL_STATUSES = ['Active', 'Breached', 'Disabled'];
 
 const readLastPollAt = async (): Promise<Date | undefined> => {
   try {
@@ -54,7 +61,7 @@ const writeLastPollAt = async (when: Date): Promise<void> => {
 // (permanently removed upstream). Uses the bulk live map so it covers ALL local
 // accounts — active and already-failed — in one pass.
 const removeDisabledAccounts = async (
-  liveByPlatformId: Map<string, { status: string }>,
+  liveByPlatformId: Map<string, PlatformAccountResult>,
 ): Promise<void> => {
   const locals = await prisma.account.findMany({
     where: { deletedAt: null, platformAccountId: { not: null } },
@@ -115,14 +122,22 @@ export const runYPFPoll = async (): Promise<void> => {
 
   const provider = getTradingPlatformProvider();
 
-  // Bulk-fetch live accounts (one tenant call vs N user-scoped calls)
-  const liveAccounts = await provider.listTenantAccounts().catch((err) => {
-    logger.warn({ err }, 'YPF poll: listTenantAccounts failed');
-    return [];
-  });
-  const liveByPlatformId = new Map(
-    liveAccounts.map((a) => [a.platformAccountId, a]),
-  );
+  // Bulk-fetch live accounts. YPF's /tenant/accounts REQUIRES a status filter
+  // (a no-arg call 400s), so sweep the relevant statuses and merge: Active +
+  // Breached cover our active local accounts and just-passed (still-Active)
+  // funded accounts, and Disabled feeds the removal cleanup below.
+  const liveByPlatformId = new Map<string, PlatformAccountResult>();
+  for (const status of POLL_STATUSES) {
+    const batch = await provider.listTenantAccounts(status).catch((err) => {
+      logger.warn({ err, status }, 'YPF poll: listTenantAccounts failed');
+      return [] as PlatformAccountResult[];
+    });
+    for (const a of batch) {
+      if (!liveByPlatformId.has(a.platformAccountId)) {
+        liveByPlatformId.set(a.platformAccountId, a);
+      }
+    }
+  }
 
   // Remove accounts that YPF has disabled (permanently removed upstream),
   // regardless of local status — including already-failed accounts that the

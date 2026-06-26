@@ -1,4 +1,4 @@
-import { AccountStatus, ChallengePhase } from '@prisma/client';
+import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
 import { discoverAccounts } from '../account-discovery.service';
 import type { PlatformAccountResult } from '../../providers/types';
 
@@ -297,6 +297,52 @@ describe('discoverAccounts', () => {
 
     expect(mockTxUserUpdate).not.toHaveBeenCalled();
     expect(mockTxAccountCreate).toHaveBeenCalled();
+  });
+
+  it('creates a breached account as FAILED with a failed challenge', async () => {
+    mockListTenantAccounts.mockResolvedValue([ypfAccount({ status: 'Breached' })]);
+
+    const result = await discoverAccounts();
+
+    expect(result.created).toBe(1);
+    expect(mockTxAccountCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: AccountStatus.FAILED,
+        failedAt: expect.any(Date),
+        failedReason: expect.any(String),
+      }),
+    });
+    expect(mockTxChallengeCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: ChallengeStatus.FAILED,
+        completedAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('resolves a funded-program account to its evaluation AccountType', async () => {
+    // Account sits on the funded program directly (instant-funding / passed).
+    // We seed AccountTypes only against eval programs, so resolution must walk
+    // back from the funded program to its eval predecessor.
+    mockListTenantAccounts.mockResolvedValue([
+      ypfAccount({ programId: 'prog-funded-50k', nextProgramName: undefined }),
+    ]);
+    // Direct lookup by funded programId misses; predecessor (eval) lookup hits.
+    mockAccountTypeFindFirst
+      .mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(accountType);
+
+    const result = await discoverAccounts();
+
+    expect(result.created).toBe(1);
+    expect(mockTxAccountCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        accountTypeId: 'at-1',
+        status: AccountStatus.FUNDED,
+        fundedAt: expect.any(Date),
+      }),
+    });
   });
 
   it('counts a failed link without aborting the rest of the sweep', async () => {
