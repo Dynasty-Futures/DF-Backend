@@ -96,7 +96,18 @@ export const getUserAccounts = async (userId: string, live = false) => {
           displayName: true,
           accountSize: true,
           profitSplit: true,
+          price: true,
         },
+      },
+      challenges: {
+        select: {
+          id: true,
+          phase: true,
+          status: true,
+          amountPaid: true,
+          startedAt: true,
+        },
+        orderBy: { startedAt: 'asc' },
       },
     },
     orderBy: { createdAt: 'desc' },

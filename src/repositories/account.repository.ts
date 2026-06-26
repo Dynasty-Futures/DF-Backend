@@ -41,7 +41,18 @@ const accountInclude = {
       name: true,
       displayName: true,
       accountSize: true,
+      price: true,
     },
+  },
+  challenges: {
+    select: {
+      id: true,
+      phase: true,
+      status: true,
+      amountPaid: true,
+      startedAt: true,
+    },
+    orderBy: { startedAt: 'asc' as const },
   },
 } as const satisfies Prisma.AccountInclude;
 
