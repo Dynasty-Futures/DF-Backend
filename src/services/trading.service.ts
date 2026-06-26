@@ -127,8 +127,11 @@ export const getAccountDetail = async (accountId: string, userId: string) => {
           profitSplit: true,
         },
       },
+      // Most-recent challenge of ANY status — a breached/failed account has no
+      // ACTIVE challenge, but the dashboard still needs its rules (profit
+      // target, max loss) to render the correct plan values instead of generic
+      // fallbacks. The current phase is always the newest challenge.
       challenges: {
-        where: { status: 'ACTIVE' },
         take: 1,
         orderBy: { createdAt: 'desc' },
       },
