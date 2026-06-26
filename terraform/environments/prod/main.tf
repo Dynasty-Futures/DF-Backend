@@ -223,6 +223,7 @@ module "ecs" {
   cors_origin               = var.cors_origin
   frontend_url              = var.frontend_url
   account_discovery_enabled = var.account_discovery_enabled
+  ypf_auto_create_users     = var.ypf_auto_create_users
 }
 
 # -----------------------------------------------------------------------------

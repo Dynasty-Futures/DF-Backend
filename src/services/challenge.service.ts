@@ -116,6 +116,10 @@ export const provisionAccount = async (
         country: 'US', // TODO: pull from user profile once country field is added
         phone: user.phone ?? undefined,
         externalId: user.id,
+        // POST /users mandates a program even for register-only; the account is
+        // provisioned separately by createAccount below.
+        programId: accountType.ypfProgramId,
+        tradeServer: 'Volumetrica',
       });
       platformUserId = platformUser.platformUserId;
 

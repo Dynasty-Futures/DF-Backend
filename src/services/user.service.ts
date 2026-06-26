@@ -23,6 +23,7 @@ import {
 import type { SafeUser } from '../repositories/auth.repository.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
 import type { PlatformUserResult } from '../providers/types.js';
+import { config } from '../config/index.js';
 
 // =============================================================================
 // User Service
@@ -251,6 +252,22 @@ export const createPlatformUser = async (
 
   const provider = getTradingPlatformProvider();
 
+  // YPF's POST /users requires a programId even for register-only creation. Any
+  // seeded program satisfies validation — no account is provisioned because we
+  // register the user only. Use the first YPF-linked AccountType.
+  const seeded = await prisma.accountType.findFirst({
+    where: { ypfProgramId: { not: null } },
+    select: { ypfProgramId: true },
+    orderBy: { accountSize: 'asc' },
+  });
+  if (!seeded?.ypfProgramId) {
+    throw new PlatformError(
+      'No YPF-linked program is configured — run seed-ypf-programs before pre-creating users',
+      {},
+      400,
+    );
+  }
+
   const result = await provider.createUser({
     email: user.email,
     firstName: user.firstName,
@@ -258,6 +275,8 @@ export const createPlatformUser = async (
     country: 'US',
     phone: user.phone ?? undefined,
     externalId: user.id,
+    programId: seeded.ypfProgramId,
+    tradeServer: 'Volumetrica',
   });
 
   await prisma.user.update({
@@ -271,6 +290,31 @@ export const createPlatformUser = async (
   );
 
   return result;
+};
+
+/**
+ * Fire-and-forget: pre-create the YPF user for a freshly registered DF user.
+ *
+ * Deliberately NEVER throws and is NOT awaited by the caller — registration must
+ * never block on, slow down, or fail because of YPF (availability, rate limits,
+ * duplicate-email errors are all non-fatal here). Gated by
+ * `config.ypf.autoCreateUsers` so it can be rolled out safely. If it fails the
+ * user simply has no `platformUserId` yet; account discovery still links by
+ * email, and the user can be back-filled later via `createPlatformUser`.
+ */
+export const ensurePlatformUserAsync = (userId: string): void => {
+  if (!config.ypf.autoCreateUsers) return;
+
+  void (async () => {
+    try {
+      await createPlatformUser(userId);
+    } catch (err) {
+      logger.warn(
+        { err, userId },
+        'Background YPF user pre-creation failed (non-fatal)',
+      );
+    }
+  })();
 };
 
 export const getPlatformUser = async (
