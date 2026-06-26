@@ -22,11 +22,13 @@ jest.mock('../../utils/database', () => ({
 
 const mockGetAccount = jest.fn();
 const mockGetAccountBreaches = jest.fn();
+const mockListPrograms = jest.fn();
 
 jest.mock('../../providers/index', () => ({
   getTradingPlatformProvider: () => ({
     getAccount: (...a: unknown[]) => mockGetAccount(...a),
     getAccountBreaches: (...a: unknown[]) => mockGetAccountBreaches(...a),
+    listPrograms: (...a: unknown[]) => mockListPrograms(...a),
   }),
 }));
 
@@ -59,6 +61,11 @@ const linkedAccount = (status: AccountStatus = AccountStatus.EVALUATION) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Catalog: eval program chains to a funded (terminal, null next) program.
+  mockListPrograms.mockResolvedValue([
+    { programId: 'prog-eval', name: 'Eval', nextProgramId: 'prog-funded' },
+    { programId: 'prog-funded', name: 'Funded', nextProgramId: null },
+  ]);
 });
 
 describe('isYpfDisabledState', () => {
@@ -96,10 +103,50 @@ describe('syncAccountFromYPF — disabled handling', () => {
 
     await syncAccountFromYPF({
       localAccountId: 'acc-1',
-      liveAccount: { status: 'Active' } as never,
+      liveAccount: { status: 'Active', programId: 'prog-eval' } as never,
     });
 
     expect(mockAccountUpdate).not.toHaveBeenCalled();
     expect(mockSyncAccountFromPlatform).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('syncAccountFromYPF — eval→funded transition', () => {
+  it('advances an evaluation account whose live program is now funded', async () => {
+    mockAccountFindUnique.mockResolvedValue(
+      linkedAccount(AccountStatus.EVALUATION),
+    );
+
+    await syncAccountFromYPF({
+      localAccountId: 'acc-1',
+      liveAccount: { status: 'Active', programId: 'prog-funded' } as never,
+    });
+
+    expect(mockAdvanceChallenge).toHaveBeenCalledWith('acc-1');
+    expect(mockFailChallenge).not.toHaveBeenCalled();
+  });
+
+  it('does not advance while still on an evaluation program', async () => {
+    mockAccountFindUnique.mockResolvedValue(
+      linkedAccount(AccountStatus.EVALUATION),
+    );
+
+    await syncAccountFromYPF({
+      localAccountId: 'acc-1',
+      liveAccount: { status: 'Active', programId: 'prog-eval' } as never,
+    });
+
+    expect(mockAdvanceChallenge).not.toHaveBeenCalled();
+  });
+
+  it('does not advance an account already marked funded', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount(AccountStatus.FUNDED));
+
+    await syncAccountFromYPF({
+      localAccountId: 'acc-1',
+      liveAccount: { status: 'Active', programId: 'prog-funded' } as never,
+    });
+
+    expect(mockAdvanceChallenge).not.toHaveBeenCalled();
   });
 });

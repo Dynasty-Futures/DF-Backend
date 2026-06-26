@@ -15,7 +15,12 @@
 // skipped, so it is safe to run repeatedly on a cron.
 // =============================================================================
 
-import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
+import {
+  AccountStatus,
+  ChallengePhase,
+  ChallengeStatus,
+  Prisma,
+} from '@prisma/client';
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config/index.js';
@@ -32,19 +37,77 @@ export interface DiscoveryResult {
   failed: number;
 }
 
-// Whether a program is the funded (terminal) phase. YPF chains programs via
-// `nextProgramId`; the program with no successor is the funded one. NOTE: this
-// MUST be read from the program catalog — the tenant-account / account-GET
-// responses never populate `nextProgramName`, so inferring phase from the
-// account payload alone misclassifies every evaluation account as funded.
+// YPF AccountState values that mean the account failed (breached its rules).
+const YPF_BREACHED_STATES = ['Breached', 'breached'];
+
+// Program-catalog maps, built once per sweep, that let us resolve an account's
+// programId to its DF AccountType + phase. YPF chains programs via
+// `nextProgramId` (eval → funded), and the program with no successor is the
+// funded/terminal one. We seed AccountTypes only against EVALUATION programs,
+// so a funded account's programId won't match directly — we walk back to its
+// evaluation predecessor.
+interface ProgramMaps {
+  /** programId → has a successor (i.e. is an evaluation/non-terminal program). */
+  hasNext: Map<string, boolean>;
+  /** funded programId → its evaluation predecessor programId. */
+  evalByFunded: Map<string, string>;
+}
+
+const buildProgramMaps = (
+  programs: { programId: string; nextProgramId?: string | undefined }[],
+): ProgramMaps => {
+  const hasNext = new Map<string, boolean>();
+  const evalByFunded = new Map<string, string>();
+  for (const p of programs) {
+    // YPF returns `nextProgramId: null` (not undefined) for terminal/funded
+    // programs, so use a truthy check — `!== undefined` would treat null as a
+    // successor and misclassify funded accounts as evaluation.
+    const hasSuccessor = Boolean(p.nextProgramId);
+    hasNext.set(p.programId, hasSuccessor);
+    if (hasSuccessor && p.nextProgramId) {
+      evalByFunded.set(p.nextProgramId, p.programId);
+    }
+  }
+  return { hasNext, evalByFunded };
+};
+
+// Whether a program is the funded (terminal) phase. MUST be read from the
+// program catalog — the tenant-account / account-GET responses never populate
+// `nextProgramName`, so inferring phase from the account payload alone
+// misclassifies every evaluation account as funded.
 const isFundedProgram = (
   programId: string | undefined,
-  programHasNext: Map<string, boolean>,
+  hasNext: Map<string, boolean>,
 ): boolean => {
   if (programId === undefined) return false;
-  const hasNext = programHasNext.get(programId);
   // Unknown program → assume evaluation (safer than mislabeling as funded).
-  return hasNext === false;
+  return hasNext.get(programId) === false;
+};
+
+// Resolve a YPF programId to a seeded AccountType. Tries a direct match first
+// (evaluation accounts), then falls back to the program's evaluation
+// predecessor (funded accounts sit on a funded program we don't seed directly).
+type AccountTypeWithRules = Prisma.AccountTypeGetPayload<{
+  include: { challengeRules: true };
+}>;
+
+const resolveAccountType = async (
+  programId: string,
+  evalByFunded: Map<string, string>,
+): Promise<AccountTypeWithRules | null> => {
+  const direct = await prisma.accountType.findFirst({
+    where: { ypfProgramId: programId },
+    include: { challengeRules: true },
+  });
+  if (direct) return direct;
+
+  const evalProgramId = evalByFunded.get(programId);
+  if (!evalProgramId) return null;
+
+  return prisma.accountType.findFirst({
+    where: { ypfProgramId: evalProgramId },
+    include: { challengeRules: true },
+  });
 };
 
 /**
@@ -84,21 +147,21 @@ export const discoverAccounts = async (): Promise<DiscoveryResult> => {
 
   result.scanned = accounts.length;
 
-  // Resolve phase from the program catalog: a program with no `nextProgramId`
-  // is the funded/terminal phase. One call, reused across all accounts.
-  const programHasNext = new Map<string, boolean>();
+  // Program catalog maps (phase + funded→eval predecessor). One call, reused
+  // across all accounts.
+  let programMaps: ProgramMaps = {
+    hasNext: new Map(),
+    evalByFunded: new Map(),
+  };
   try {
-    const programs = await provider.listPrograms();
-    for (const p of programs) {
-      programHasNext.set(p.programId, p.nextProgramId !== undefined);
-    }
+    programMaps = buildProgramMaps(await provider.listPrograms());
   } catch (err) {
     logger.warn({ err }, 'account-discovery: failed to load program catalog');
   }
 
   for (const acct of accounts) {
     try {
-      await discoverOne(acct, result, programHasNext);
+      await discoverOne(acct, result, programMaps);
     } catch (err) {
       result.failed++;
       logger.error(
@@ -115,7 +178,7 @@ export const discoverAccounts = async (): Promise<DiscoveryResult> => {
 const discoverOne = async (
   acct: PlatformAccountResult,
   result: DiscoveryResult,
-  programHasNext: Map<string, boolean>,
+  programMaps: ProgramMaps,
 ): Promise<void> => {
   // 1. Idempotency — already linked locally?
   const existing = await prisma.account.findUnique({
@@ -161,10 +224,10 @@ const discoverOne = async (
     );
     return;
   }
-  const accountType = await prisma.accountType.findFirst({
-    where: { ypfProgramId: acct.programId },
-    include: { challengeRules: true },
-  });
+  const accountType = await resolveAccountType(
+    acct.programId,
+    programMaps.evalByFunded,
+  );
   if (!accountType) {
     result.skippedNoProgram++;
     logger.warn(
@@ -174,11 +237,21 @@ const discoverOne = async (
     return;
   }
 
-  // 5. Derive local phase/status from the YPF program chain.
-  const funded = isFundedProgram(acct.programId, programHasNext);
+  // 5. Derive local phase/status from the YPF program chain + account state.
+  const funded = isFundedProgram(acct.programId, programMaps.hasNext);
+  const breached = YPF_BREACHED_STATES.includes(acct.status);
   const phase = funded ? ChallengePhase.FUNDED : ChallengePhase.PHASE_1;
-  const status = funded ? AccountStatus.FUNDED : AccountStatus.EVALUATION;
+  // Breached accounts are failed regardless of phase; otherwise active.
+  const status = breached
+    ? AccountStatus.FAILED
+    : funded
+      ? AccountStatus.FUNDED
+      : AccountStatus.EVALUATION;
+  const challengeStatus = breached
+    ? ChallengeStatus.FAILED
+    : ChallengeStatus.ACTIVE;
   const phaseRules = accountType.challengeRules.find((r) => r.phase === phase);
+  const now = new Date();
 
   // Anchor the starting balance to the AccountType's face value, NOT YPF's
   // `initialBalance` — that field is unreliable (it tracks the live balance on
@@ -209,7 +282,11 @@ const discoverOne = async (
         highWaterMark,
         platformAccountId: acct.platformAccountId,
         platformUserId: acct.platformUserId,
-        ...(funded && { fundedAt: new Date() }),
+        ...(funded && !breached && { fundedAt: now }),
+        ...(breached && {
+          failedAt: now,
+          failedReason: 'Account breached on the trading platform',
+        }),
         ...(volumetricaUserId && { volumetricaUserId }),
       },
     });
@@ -218,7 +295,8 @@ const discoverOne = async (
       data: {
         accountId: account.id,
         phase,
-        status: ChallengeStatus.ACTIVE,
+        status: challengeStatus,
+        ...(breached && { completedAt: now }),
         profitTarget: phaseRules?.profitTarget ?? 0,
         maxDailyLoss: phaseRules?.maxDailyLoss ?? 0,
         maxTotalDrawdown: phaseRules?.maxTotalDrawdown ?? 0,

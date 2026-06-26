@@ -39,8 +39,10 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   ACCOUNT_DISCOVERY_CRON: z.string().default('*/2 * * * *'),
-  // Comma-separated YPF AccountState values to sweep (e.g. "Active,Upgraded").
-  ACCOUNT_DISCOVERY_STATUSES: z.string().default('Active'),
+  // Comma-separated YPF AccountState values to sweep. Includes Breached so a
+  // trader's failed accounts are discovered + shown as inactive (Disabled is
+  // intentionally excluded — those are permanently removed upstream).
+  ACCOUNT_DISCOVERY_STATUSES: z.string().default('Active,Breached'),
 
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),

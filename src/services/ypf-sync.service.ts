@@ -33,6 +33,32 @@ const YPF_DISABLED = ['Disabled', 'disabled'];
 export const isYpfDisabledState = (state: string): boolean =>
   YPF_DISABLED.includes(state);
 
+// YPF has no "account passed" event and never emits a Funded/Upgraded *state* —
+// an account that passes evaluation is simply moved onto the funded program
+// (its programId changes to a terminal program with no `nextProgramId`). So we
+// detect the eval→funded transition by checking whether the account's live
+// programId is a terminal/funded program. The funded-program set is cached
+// because the catalog changes rarely and we'd otherwise refetch it per account.
+let fundedProgramCache: { at: number; ids: Set<string> } | null = null;
+const FUNDED_PROGRAM_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const loadFundedProgramIds = async (
+  provider: ReturnType<typeof getTradingPlatformProvider>,
+): Promise<Set<string>> => {
+  const now = Date.now();
+  if (fundedProgramCache && now - fundedProgramCache.at < FUNDED_PROGRAM_CACHE_TTL_MS) {
+    return fundedProgramCache.ids;
+  }
+  const programs = await provider.listPrograms();
+  // A program with no successor is the funded/terminal phase. YPF returns
+  // `nextProgramId: null` (not undefined), so use a truthy check.
+  const ids = new Set(
+    programs.filter((p) => !p.nextProgramId).map((p) => p.programId),
+  );
+  fundedProgramCache = { at: now, ids };
+  return ids;
+};
+
 /** Soft-delete a local account that no longer exists on YPF (idempotent). */
 export const softDeleteRemovedAccount = async (
   localAccountId: string,
@@ -132,10 +158,21 @@ export const syncAccountFromYPF = async ({
   await syncService.syncAccountFromPlatform(localAccountId, live);
 
   const isBreached = YPF_BREACHED.includes(upstreamState);
+
+  // The account passed if it's now on a funded (terminal) program but we still
+  // have it as non-funded locally. This also self-corrects rows created while
+  // the funded program was mis-detected. Fall back to the (never-emitted) state
+  // strings for safety.
+  const fundedProgramIds = await loadFundedProgramIds(provider).catch(
+    () => new Set<string>(),
+  );
+  const liveProgramIsFunded =
+    !!live.programId && fundedProgramIds.has(live.programId);
   const isUpgrade =
-    YPF_UPGRADED.includes(upstreamState) ||
-    (YPF_FUNDED.includes(upstreamState) &&
-      account.status !== AccountStatus.FUNDED);
+    account.status !== AccountStatus.FUNDED &&
+    (liveProgramIsFunded ||
+      YPF_UPGRADED.includes(upstreamState) ||
+      YPF_FUNDED.includes(upstreamState));
 
   if (isBreached) {
     const breaches =
