@@ -100,6 +100,11 @@ variable "ypf_client_key_arn" {
   type        = string
 }
 
+variable "ypf_webhook_secret_arn" {
+  description = "ARN of the YPF_WEBHOOK_SECRET secret in Secrets Manager"
+  type        = string
+}
+
 # -----------------------------------------------------------------------------
 # Task Configuration
 # -----------------------------------------------------------------------------

@@ -211,6 +211,7 @@ module "ecs" {
   volumetrica_api_key_arn    = module.secrets.volumetrica_api_key_arn
   ypf_api_url_arn            = module.secrets.ypf_api_url_arn
   ypf_client_key_arn         = module.secrets.ypf_client_key_arn
+  ypf_webhook_secret_arn     = module.secrets.ypf_webhook_secret_arn
 
   # Task sizing
   cpu           = var.ecs_api_cpu

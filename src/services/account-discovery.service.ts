@@ -175,6 +175,44 @@ export const discoverAccounts = async (): Promise<DiscoveryResult> => {
   return result;
 };
 
+// ---------------------------------------------------------------------------
+// Coalesced trigger (used by the real-time YPF account-creation webhook)
+// ---------------------------------------------------------------------------
+// The webhook is a "poke" to run discovery now instead of waiting for the cron.
+// We coalesce so a burst of webhooks (or a delivery landing mid-sweep) can't
+// spawn concurrent sweeps: if one is already running we just flag a re-run, then
+// run exactly one more pass after it finishes. The trailing pass matters because
+// a webhook can arrive before the new account shows up in YPF's list response —
+// the follow-up sweep picks it up. Fire-and-forget; never throws to the caller.
+
+let sweepInFlight = false;
+let rerunQueued = false;
+
+export const triggerDiscoverySweep = (reason: string): void => {
+  if (sweepInFlight) {
+    rerunQueued = true;
+    logger.debug({ reason }, 'account-discovery: sweep already running — queued re-run');
+    return;
+  }
+
+  void runCoalescedSweep(reason);
+};
+
+const runCoalescedSweep = async (reason: string): Promise<void> => {
+  sweepInFlight = true;
+  try {
+    do {
+      rerunQueued = false;
+      logger.info({ reason }, 'account-discovery: webhook-triggered sweep');
+      await discoverAccounts();
+    } while (rerunQueued);
+  } catch (err) {
+    logger.error({ err, reason }, 'account-discovery: webhook-triggered sweep failed');
+  } finally {
+    sweepInFlight = false;
+  }
+};
+
 const discoverOne = async (
   acct: PlatformAccountResult,
   result: DiscoveryResult,
