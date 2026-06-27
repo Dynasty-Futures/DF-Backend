@@ -55,6 +55,15 @@ const envSchema = z.object({
   // intentionally excluded — those are permanently removed upstream).
   ACCOUNT_DISCOVERY_STATUSES: z.string().default('Active,Breached'),
 
+  // Shared secret guarding the inbound YPF account-creation webhook
+  // (POST /v1/webhooks/ypf). We register the webhook URL in YPF's admin
+  // (admin.dynastyfuturesdyn.com → DEV space → Web Hooks) and pass this secret
+  // back via a header/token so randoms can't poke the endpoint. The webhook only
+  // *triggers* the existing discovery sweep — it never trusts the body for
+  // account data — so this is abuse/DoS protection, not a trust boundary. Unset
+  // = endpoint disabled (returns 503).
+  YPF_WEBHOOK_SECRET: z.string().optional(),
+
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
@@ -157,6 +166,9 @@ export const config = {
       statuses: env.ACCOUNT_DISCOVERY_STATUSES.split(',')
         .map((s) => s.trim())
         .filter(Boolean),
+    },
+    webhook: {
+      secret: env.YPF_WEBHOOK_SECRET,
     },
   },
   volumetrica: {

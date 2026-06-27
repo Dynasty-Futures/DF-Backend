@@ -261,6 +261,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "VOLUMETRICA_API_KEY", valueFrom = var.volumetrica_api_key_arn },
         { name = "YPF_API_URL", valueFrom = var.ypf_api_url_arn },
         { name = "YPF_CLIENT_KEY", valueFrom = var.ypf_client_key_arn },
+        { name = "YPF_WEBHOOK_SECRET", valueFrom = var.ypf_webhook_secret_arn },
       ]
 
       # Health check

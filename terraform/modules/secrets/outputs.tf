@@ -57,6 +57,11 @@ output "ypf_client_key_arn" {
   value       = data.aws_secretsmanager_secret.ypf_client_key.arn
 }
 
+output "ypf_webhook_secret_arn" {
+  description = "ARN of the YPF_WEBHOOK_SECRET secret (managed out-of-band)"
+  value       = data.aws_secretsmanager_secret.ypf_webhook_secret.arn
+}
+
 output "all_secret_arns" {
   description = "List of all secret ARNs (for IAM policies)"
   value = [
@@ -71,5 +76,6 @@ output "all_secret_arns" {
     aws_secretsmanager_secret.volumetrica_api_key.arn,
     data.aws_secretsmanager_secret.ypf_api_url.arn,
     data.aws_secretsmanager_secret.ypf_client_key.arn,
+    data.aws_secretsmanager_secret.ypf_webhook_secret.arn,
   ]
 }

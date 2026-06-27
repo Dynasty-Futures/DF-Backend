@@ -17,6 +17,7 @@
 # Data sources (looked up by name; managed out-of-band):
 # - YPF_API_URL
 # - YPF_CLIENT_KEY
+# - YPF_WEBHOOK_SECRET
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -183,4 +184,11 @@ data "aws_secretsmanager_secret" "ypf_api_url" {
 
 data "aws_secretsmanager_secret" "ypf_client_key" {
   name = "${var.project_name}/${var.environment}/app/ypf-api-key"
+}
+
+# Shared secret for the inbound YPF account-creation webhook
+# (POST /v1/webhooks/ypf). Registered as a static X-Webhook-Secret header in the
+# YPF webhook config so we can reject unauthenticated pokes.
+data "aws_secretsmanager_secret" "ypf_webhook_secret" {
+  name = "${var.project_name}/${var.environment}/app/ypf-webhook-secret"
 }

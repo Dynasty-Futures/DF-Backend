@@ -1,5 +1,5 @@
 import { AccountStatus, ChallengePhase, ChallengeStatus } from '@prisma/client';
-import { discoverAccounts } from '../account-discovery.service';
+import { discoverAccounts, triggerDiscoverySweep } from '../account-discovery.service';
 import type { PlatformAccountResult } from '../../providers/types';
 
 // =============================================================================
@@ -356,5 +356,45 @@ describe('discoverAccounts', () => {
 
     expect(result.failed).toBe(1);
     expect(result.created).toBe(1);
+  });
+});
+
+describe('triggerDiscoverySweep (webhook coalescing)', () => {
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  it('runs a discovery sweep when triggered', async () => {
+    mockListTenantAccounts.mockResolvedValue([]);
+
+    triggerDiscoverySweep('test');
+    await flush();
+
+    expect(mockListTenantAccounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces triggers landing mid-sweep into a single trailing re-run', async () => {
+    // Gate the first sweep open so the next triggers arrive while it's in-flight.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    mockListTenantAccounts
+      .mockImplementationOnce(async () => {
+        await gate;
+        return [];
+      })
+      .mockResolvedValue([]);
+
+    triggerDiscoverySweep('first'); // starts sweep #1 (blocked on the gate)
+    await Promise.resolve();
+    triggerDiscoverySweep('second'); // in-flight → queues exactly one re-run
+    triggerDiscoverySweep('third'); // in-flight → re-run already queued, no-op
+
+    release(); // let #1 finish → the single trailing sweep #2 runs
+    await flush();
+    await flush();
+
+    // One status configured → one list call per sweep. Two sweeps total
+    // (initial + ONE coalesced trailing), NOT three.
+    expect(mockListTenantAccounts).toHaveBeenCalledTimes(2);
   });
 });

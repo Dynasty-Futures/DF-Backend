@@ -7,6 +7,7 @@ import accountsRoutes from './accounts.js';
 import tradingRoutes from './trading.js';
 import payoutsRoutes from './payouts.js';
 import journalRoutes from './journal.js';
+import webhooksRoutes from './webhooks.js';
 
 // =============================================================================
 // V1 API Routes
@@ -27,6 +28,7 @@ router.use('/accounts', accountsRoutes);
 router.use('/trading', tradingRoutes);
 router.use('/payouts', payoutsRoutes);
 router.use('/journal', journalRoutes);
+router.use('/webhooks', webhooksRoutes);
 
 // router.use('/challenges', challengesRoutes);
 // router.use('/admin', adminRoutes);
@@ -46,6 +48,7 @@ router.get('/', (_req, res) => {
       journal: '/v1/journal',
       support: '/v1/support/tickets',
       affiliates: '/v1/affiliates/apply',
+      webhooks: '/v1/webhooks/ypf',
     },
   });
 });
