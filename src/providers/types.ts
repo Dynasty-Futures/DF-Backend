@@ -102,6 +102,29 @@ export interface CreatePlatformAccountParams {
   tradeServer?: string | undefined;
 }
 
+/**
+ * Withdrawal-rule thresholds for a single account, mirrored from YPF's
+ * `account.addOns`. Every field is optional: when absent (or zero for the
+ * count/amount thresholds) the corresponding rule is "not configured" and the
+ * eligibility engine skips it rather than blocking.
+ */
+export interface AccountWithdrawalRules {
+  /** Program-level master switch — when explicitly false, no withdrawals. */
+  isWithdrawalAllowed?: boolean | undefined;
+  /** Minimum profitable trading days required before a withdrawal. */
+  minProfitableTradingDays?: number | undefined;
+  /** Minimum active days required. */
+  minActiveDays?: number | undefined;
+  /** Minimum trading days required. */
+  minTradingDays?: number | undefined;
+  /** Per-account minimum allowed withdrawal amount. */
+  minWithdrawalAmount?: number | undefined;
+  /** Maximum withdrawable profit cap (0/absent = uncapped). */
+  maxWithdrawalAmount?: number | undefined;
+  /** Whether a breached account may still request a payout. */
+  allowPayoutOnBreach?: boolean | undefined;
+}
+
 export interface PlatformAccountResult {
   platformAccountId: string;
   platformUserId: string;
@@ -127,6 +150,9 @@ export interface PlatformAccountResult {
   activeDays?: number | undefined;
   /** Trader's profit-split percentage on this account */
   profitSplit?: number | undefined;
+  /** Per-account withdrawal-rule thresholds (from YPF account.addOns). All
+   * optional — absent/zero means "not configured" and the rule is skipped. */
+  withdrawalRules?: AccountWithdrawalRules | undefined;
   /** Drawdown metrics (current + high-water) */
   drawDown?: number | undefined;
   maxDrawDown?: number | undefined;
@@ -162,6 +188,10 @@ export interface PlatformProgramResult {
   currency: string;
   /** Phase progression — Phase 1 → Phase 2 → Funded chain */
   nextProgramId?: string | undefined;
+  /** Program-level master switch: are withdrawals allowed at all? */
+  isWithdrawalAllowed?: boolean | undefined;
+  /** Program-level minimum allowed withdrawal amount. */
+  lowestAllowedWithdraw?: number | undefined;
   raw?: Record<string, unknown> | undefined;
 }
 
