@@ -41,6 +41,13 @@ export interface UpdateUserProfileData {
   firstName?: string | undefined;
   lastName?: string | undefined;
   phone?: string | null | undefined;
+  dateOfBirth?: string | null | undefined;
+  address?: string | null | undefined;
+  city?: string | null | undefined;
+  state?: string | null | undefined;
+  postalCode?: string | null | undefined;
+  country?: string | null | undefined;
+  timezone?: string | null | undefined;
 }
 
 export interface AdminUpdateUserData extends UpdateUserProfileData {
@@ -63,6 +70,13 @@ const safeUserSelect = {
   role: true,
   status: true,
   kycStatus: true,
+  dateOfBirth: true,
+  address: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  country: true,
+  timezone: true,
   emailVerified: true,
   emailVerifiedAt: true,
   lastLoginAt: true,
@@ -162,6 +176,13 @@ export const updateUserProfile = async (
     if (data.firstName !== undefined) updateData.firstName = data.firstName;
     if (data.lastName !== undefined) updateData.lastName = data.lastName;
     if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.dateOfBirth !== undefined) updateData.dateOfBirth = data.dateOfBirth;
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.city !== undefined) updateData.city = data.city;
+    if (data.state !== undefined) updateData.state = data.state;
+    if (data.postalCode !== undefined) updateData.postalCode = data.postalCode;
+    if (data.country !== undefined) updateData.country = data.country;
+    if (data.timezone !== undefined) updateData.timezone = data.timezone;
 
     return await prisma.user.update({
       where: { id, deletedAt: null },
@@ -192,6 +213,13 @@ export const adminUpdateUser = async (
     if (data.firstName !== undefined) updateData.firstName = data.firstName;
     if (data.lastName !== undefined) updateData.lastName = data.lastName;
     if (data.phone !== undefined) updateData.phone = data.phone;
+    if (data.dateOfBirth !== undefined) updateData.dateOfBirth = data.dateOfBirth;
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.city !== undefined) updateData.city = data.city;
+    if (data.state !== undefined) updateData.state = data.state;
+    if (data.postalCode !== undefined) updateData.postalCode = data.postalCode;
+    if (data.country !== undefined) updateData.country = data.country;
+    if (data.timezone !== undefined) updateData.timezone = data.timezone;
     if (data.role !== undefined) updateData.role = data.role;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.emailVerified !== undefined) {
