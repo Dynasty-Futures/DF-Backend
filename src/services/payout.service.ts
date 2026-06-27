@@ -17,8 +17,14 @@ import {
   PlatformError,
 } from '../utils/errors.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
+import type { PlatformAccountResult } from '../providers/types.js';
 import * as payoutRepository from '../repositories/payout.repository.js';
 import type { PayoutWithAccount } from '../repositories/payout.repository.js';
+import {
+  evaluatePayoutEligibility,
+  type PayoutEligibilityInput,
+  type PayoutRule,
+} from './payout-eligibility.js';
 
 // Rise is the firm's payout rail (a YPF TransferType). Bank details ride along
 // in `payoutDetails` and are forwarded to YPF without being persisted locally.
@@ -37,6 +43,16 @@ export interface EligibleAccountDTO {
   availableProfit: number;
   hasPendingPayout: boolean;
   eligible: boolean;
+  /** Per-rule eligibility breakdown for the UI checklist. */
+  rules: PayoutRule[];
+  /** Minimum a single request must be (0 = no minimum). */
+  minAmount: number;
+  /** Maximum a single request may be. */
+  maxAmount: number;
+  /** Trader's profit-split % on this account, when known. */
+  profitSplit?: number | null;
+  /** First blocking reason when ineligible. */
+  blockingReason?: string | null;
 }
 
 export interface PayoutDTO {
@@ -103,12 +119,71 @@ const toPayoutDTO = (p: PayoutWithAccount): PayoutDTO => ({
   processedAt: p.processedAt ? p.processedAt.toISOString() : null,
 });
 
+// ── Eligibility helpers ───────────────────────────────────────────────────────
+
+/** The local-account shape the eligibility builder needs. */
+interface AccountForEligibility {
+  status: AccountStatus;
+  currentBalance: unknown;
+  startingBalance: unknown;
+  platformAccountId: string | null;
+  platformUserId: string | null;
+  user?: { platformUserId: string | null } | null;
+}
+
+const resolvePlatformUserId = (a: AccountForEligibility): string | null =>
+  a.platformUserId ?? a.user?.platformUserId ?? null;
+
+/**
+ * Pull fresh counters + withdrawal rules from YPF. Best-effort: if YPF is
+ * unreachable we evaluate against stored data only (which, being fail-permissive,
+ * never wrongly blocks — YPF stays the final authority at submit/approve time).
+ */
+const fetchLiveAccount = async (
+  platformUserId: string | null,
+  platformAccountId: string | null
+): Promise<PlatformAccountResult | null> => {
+  if (!platformUserId || !platformAccountId) return null;
+  try {
+    const provider = getTradingPlatformProvider();
+    return await provider.getAccount(platformUserId, platformAccountId);
+  } catch (err) {
+    logger.warn(
+      { err, platformAccountId },
+      'Payout: live account fetch failed; evaluating with stored data only'
+    );
+    return null;
+  }
+};
+
+const buildEligibilityInput = (
+  account: AccountForEligibility,
+  hasPendingPayout: boolean,
+  live: PlatformAccountResult | null,
+  requestedAmount?: number
+): PayoutEligibilityInput => ({
+  accountStatus: account.status,
+  // Prefer the fresher live balance; fall back to the stored snapshot.
+  currentBalance: live?.balance ?? Number(account.currentBalance),
+  startingBalance: Number(account.startingBalance),
+  hasPendingPayout,
+  isPlatformLinked:
+    account.platformAccountId !== null && resolvePlatformUserId(account) !== null,
+  profitTradingDays: live?.profitTradingDays,
+  activeDays: live?.activeDays,
+  tradingDays: live?.tradingDays,
+  profitSplit: live?.profitSplit,
+  rules: live?.withdrawalRules,
+  ...(requestedAmount !== undefined ? { requestedAmount } : {}),
+});
+
 // ── Eligible accounts ──────────────────────────────────────────────────────
 
 /**
- * Funded accounts with their withdrawable profit. `eligible` is a soft UX hint
- * (funded + has profit + nothing in flight + linked to the platform). YPF still
- * enforces the real winning-day / cap rules at request and approval time.
+ * Funded accounts with their withdrawable profit and a full per-rule eligibility
+ * breakdown. We pull live counters + withdrawal rules from YPF per account and
+ * run the (fail-permissive) eligibility engine so the UI can show exactly what's
+ * met / unmet. YPF still enforces the rules at request and approval time.
  */
 export const getEligibleAccounts = async (
   userId: string
@@ -119,27 +194,36 @@ export const getEligibleAccounts = async (
       deletedAt: null,
       status: AccountStatus.FUNDED,
     },
-    include: { accountType: true },
+    include: { accountType: true, user: { select: { platformUserId: true } } },
   });
 
   const result: EligibleAccountDTO[] = [];
   for (const a of accounts) {
-    const currentBalance = Number(a.currentBalance);
-    const startingBalance = Number(a.startingBalance);
-    const availableProfit = Math.max(0, currentBalance - startingBalance);
     const active = await payoutRepository.findActivePayoutForAccount(a.id);
     const hasPendingPayout = active !== null;
+    const live = await fetchLiveAccount(
+      resolvePlatformUserId(a),
+      a.platformAccountId
+    );
+
+    const evalResult = evaluatePayoutEligibility(
+      buildEligibilityInput(a, hasPendingPayout, live)
+    );
 
     result.push({
       accountId: a.id,
       accountName: accountLabel(a),
       currency: DEFAULT_CURRENCY,
-      currentBalance,
-      startingBalance,
-      availableProfit,
+      currentBalance: live?.balance ?? Number(a.currentBalance),
+      startingBalance: Number(a.startingBalance),
+      availableProfit: evalResult.availableProfit,
       hasPendingPayout,
-      eligible:
-        availableProfit > 0 && !hasPendingPayout && a.platformAccountId !== null,
+      eligible: evalResult.eligible,
+      rules: evalResult.rules,
+      minAmount: evalResult.minAmount,
+      maxAmount: evalResult.maxAmount,
+      profitSplit: live?.profitSplit ?? null,
+      blockingReason: evalResult.blockingReason ?? null,
     });
   }
 
@@ -162,12 +246,6 @@ export const requestPayout = async (
     throw new NotFoundError('Account not found');
   }
 
-  if (account.status !== AccountStatus.FUNDED) {
-    throw new BadRequestError(
-      'Only funded accounts are eligible for payouts'
-    );
-  }
-
   const platformUserId = account.platformUserId ?? account.user.platformUserId;
   const platformAccountId = account.platformAccountId;
   if (!platformUserId || !platformAccountId) {
@@ -178,23 +256,18 @@ export const requestPayout = async (
     );
   }
 
-  const availableProfit = Math.max(
-    0,
-    Number(account.currentBalance) - Number(account.startingBalance)
-  );
-  if (amount <= 0) {
-    throw new BadRequestError('Payout amount must be greater than zero');
-  }
-  if (amount > availableProfit) {
-    throw new BadRequestError(
-      'Requested amount exceeds your withdrawable profit'
-    );
-  }
-
+  // Full eligibility check against the live account (counters + withdrawal
+  // rules). Fail-permissive on missing YPF config, but blocks anything we can
+  // prove ineligible before it ever hits YPF.
   const active = await payoutRepository.findActivePayoutForAccount(accountId);
-  if (active) {
+  const live = await fetchLiveAccount(platformUserId, platformAccountId);
+  const eligibility = evaluatePayoutEligibility(
+    buildEligibilityInput(account, active !== null, live, amount)
+  );
+  if (!eligibility.eligible || eligibility.amountErrors.length > 0) {
     throw new BadRequestError(
-      'You already have a payout request in progress for this account'
+      eligibility.blockingReason ??
+        'This account is not eligible for a payout right now'
     );
   }
 

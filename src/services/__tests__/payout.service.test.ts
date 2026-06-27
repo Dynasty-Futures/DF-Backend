@@ -25,11 +25,13 @@ jest.mock('../../utils/database', () => ({
 
 const mockCreatePayout = jest.fn();
 const mockListPayouts = jest.fn();
+const mockGetAccount = jest.fn();
 
 jest.mock('../../providers/index', () => ({
   getTradingPlatformProvider: () => ({
     createPayout: (...args: unknown[]) => mockCreatePayout(...args),
     listPayouts: (...args: unknown[]) => mockListPayouts(...args),
+    getAccount: (...args: unknown[]) => mockGetAccount(...args),
   }),
 }));
 
@@ -127,6 +129,7 @@ describe('payoutService.getEligibleAccounts', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindActive.mockResolvedValue(null);
+    mockGetAccount.mockResolvedValue(null);
   });
 
   it('returns funded accounts with withdrawable profit and marks them eligible', async () => {
@@ -160,6 +163,26 @@ describe('payoutService.getEligibleAccounts', () => {
     expect(acct.availableProfit).toBe(0);
     expect(acct.eligible).toBe(false);
   });
+
+  it('marks ineligible and surfaces the rule when live withdrawal rules are unmet', async () => {
+    mockAccountFindMany.mockResolvedValue([fundedAccount()]);
+    mockGetAccount.mockResolvedValue({
+      balance: 27500,
+      profitTradingDays: 2,
+      profitSplit: 80,
+      withdrawalRules: { minProfitableTradingDays: 5 },
+    });
+
+    const acct = (await getEligibleAccounts('user-1'))[0]!;
+
+    expect(acct.eligible).toBe(false);
+    expect(acct.profitSplit).toBe(80);
+    expect(acct.blockingReason).toMatch(/5 profitable trading days/i);
+    const rule = acct.rules.find((r) => r.key === 'min_profitable_days')!;
+    expect(rule.passed).toBe(false);
+    expect(rule.current).toBe(2);
+    expect(rule.required).toBe(5);
+  });
 });
 
 describe('payoutService.requestPayout', () => {
@@ -167,6 +190,7 @@ describe('payoutService.requestPayout', () => {
     jest.clearAllMocks();
     mockAccountFindFirst.mockResolvedValue(fundedAccount());
     mockFindActive.mockResolvedValue(null);
+    mockGetAccount.mockResolvedValue(null);
     mockCreatePayout.mockResolvedValue(platformResult());
     mockRepoCreate.mockResolvedValue(payoutRow());
     mockFindById.mockResolvedValue(payoutRow());
@@ -233,6 +257,31 @@ describe('payoutService.requestPayout', () => {
 
   it('blocks a second request while one is in progress', async () => {
     mockFindActive.mockResolvedValue({ id: 'po-existing' });
+
+    await expect(requestPayout(requestInput())).rejects.toBeInstanceOf(
+      BadRequestError
+    );
+    expect(mockCreatePayout).not.toHaveBeenCalled();
+  });
+
+  it('blocks on an unmet live withdrawal rule without calling YPF', async () => {
+    mockGetAccount.mockResolvedValue({
+      balance: 27500,
+      profitTradingDays: 1,
+      withdrawalRules: { minProfitableTradingDays: 5 },
+    });
+
+    await expect(requestPayout(requestInput())).rejects.toBeInstanceOf(
+      BadRequestError
+    );
+    expect(mockCreatePayout).not.toHaveBeenCalled();
+  });
+
+  it('blocks when the program disables withdrawals', async () => {
+    mockGetAccount.mockResolvedValue({
+      balance: 27500,
+      withdrawalRules: { isWithdrawalAllowed: false },
+    });
 
     await expect(requestPayout(requestInput())).rejects.toBeInstanceOf(
       BadRequestError

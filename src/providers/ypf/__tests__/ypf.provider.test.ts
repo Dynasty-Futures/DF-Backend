@@ -530,6 +530,46 @@ describe('YPFProvider', () => {
     });
   });
 
+  describe('listPayouts', () => {
+    it('unwraps the v1 paginated envelope { count, continuationToken, results }', async () => {
+      mockGet.mockResolvedValueOnce({
+        count: 1,
+        continuationToken: '{}',
+        results: [makeYpfPayout()],
+      });
+
+      const result = await provider.listPayouts();
+
+      expect(mockGet).toHaveBeenCalledWith('/payouts', {});
+      expect(result).toHaveLength(1);
+      expect(result[0]!.platformPayoutId).toBe('payout-001');
+    });
+
+    it('unwraps the v2 envelope { total, offset, limit, results }', async () => {
+      mockGet.mockResolvedValueOnce({
+        total: 1,
+        offset: 0,
+        limit: 50,
+        results: [makeYpfPayout()],
+      });
+
+      const result = await provider.listPayouts();
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('still handles a bare array and an empty/missing body', async () => {
+      mockGet.mockResolvedValueOnce([makeYpfPayout()]);
+      expect(await provider.listPayouts()).toHaveLength(1);
+
+      mockGet.mockResolvedValueOnce({ count: 0, results: [] });
+      expect(await provider.listPayouts()).toHaveLength(0);
+
+      mockGet.mockResolvedValueOnce(null);
+      expect(await provider.listPayouts()).toHaveLength(0);
+    });
+  });
+
   // ── Data retrieval ───────────────────────────────────────────────────────
 
   describe('getDailySnapshots', () => {

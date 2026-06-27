@@ -21,6 +21,7 @@ import type {
   PlatformPayoutResult,
   ListPayoutsParams,
   ListProgramsParams,
+  AccountWithdrawalRules,
 } from '../types.js';
 
 // ── YPF raw response shapes (subset — only fields we map) ───────────────────
@@ -64,16 +65,30 @@ interface YPFAccountResponse {
   extraValues?: YPFExtraValueEntry[];
 }
 
+// YPF's `account.addOns` carries the per-account withdrawal-rule thresholds.
+// All nullable — absent/zero means "not configured" downstream.
+interface YPFAddOnsDetails {
+  profitSplit?: number;
+  withdrawActiveDays?: number;
+  withdrawTradingDays?: number;
+  withdrawProfitableTradingDays?: number;
+  withdrawLowestAllowedWithdrawal?: number;
+  withdrawProfitCapLimit?: number;
+  allowPayoutOnBreach?: boolean;
+}
+
 // `/rulesdetails` returns a far richer `account` object than the plain account
-// GET — notably the live day-counters + profit split that the dashboard tiles
-// need. We only type the subset we surface.
+// GET — notably the live day-counters + profit split + addOns that the dashboard
+// tiles and payout eligibility need. We only type the subset we surface.
 interface YPFRulesDetailsResponse {
   account?: {
+    state?: string;
     tradingDays?: number;
     profitTradingDays?: number;
     withdrawProfitTradingDays?: number;
     activeDays?: number;
     profitSplit?: number;
+    addOns?: YPFAddOnsDetails;
   };
 }
 
@@ -116,6 +131,7 @@ interface YPFProgramResponse {
   nextProgramId?: string;
   isEnabled?: boolean;
   isWithdrawalAllowed?: boolean;
+  lowestAllowedWithdraw?: number;
   createdAt?: string;
 }
 
@@ -136,6 +152,25 @@ interface YPFPayoutResponse {
   stateTimestamp?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// `/payouts` is paginated. v1 returns `{count, continuationToken, results}`;
+// v2 returns `{total, offset, limit, results}`. Both carry `.results`.
+type YPFPayoutsListResponse =
+  | YPFPayoutResponse[]
+  | {
+      results?: YPFPayoutResponse[];
+      count?: number;
+      total?: number;
+      continuationToken?: string;
+    };
+
+/** Cached per-program info used to enrich live account fetches. */
+interface ProgramCacheEntry {
+  name: string;
+  nextProgramId?: string;
+  isWithdrawalAllowed?: boolean;
+  lowestAllowedWithdraw?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -242,7 +277,35 @@ const mapProgram = (p: YPFProgramResponse): PlatformProgramResult => {
     raw: p as unknown as Record<string, unknown>,
   };
   if (p.nextProgramId !== undefined) result.nextProgramId = p.nextProgramId;
+  if (p.isWithdrawalAllowed !== undefined)
+    result.isWithdrawalAllowed = p.isWithdrawalAllowed;
+  if (p.lowestAllowedWithdraw !== undefined)
+    result.lowestAllowedWithdraw = p.lowestAllowedWithdraw;
   return result;
+};
+
+/**
+ * Map YPF's `account.addOns` into our neutral withdrawal-rule shape. Returns
+ * undefined when there's nothing meaningful to surface so callers can skip it.
+ */
+const mapWithdrawalRules = (
+  addOns?: YPFAddOnsDetails,
+): AccountWithdrawalRules | undefined => {
+  if (!addOns) return undefined;
+  const r: AccountWithdrawalRules = {};
+  if (addOns.withdrawProfitableTradingDays !== undefined)
+    r.minProfitableTradingDays = addOns.withdrawProfitableTradingDays;
+  if (addOns.withdrawActiveDays !== undefined)
+    r.minActiveDays = addOns.withdrawActiveDays;
+  if (addOns.withdrawTradingDays !== undefined)
+    r.minTradingDays = addOns.withdrawTradingDays;
+  if (addOns.withdrawLowestAllowedWithdrawal !== undefined)
+    r.minWithdrawalAmount = addOns.withdrawLowestAllowedWithdrawal;
+  if (addOns.withdrawProfitCapLimit !== undefined)
+    r.maxWithdrawalAmount = addOns.withdrawProfitCapLimit;
+  if (addOns.allowPayoutOnBreach !== undefined)
+    r.allowPayoutOnBreach = addOns.allowPayoutOnBreach;
+  return Object.keys(r).length > 0 ? r : undefined;
 };
 
 const mapPayout = (p: YPFPayoutResponse): PlatformPayoutResult => {
@@ -272,10 +335,9 @@ const mapPayout = (p: YPFPayoutResponse): PlatformPayoutResult => {
 export class YPFProvider implements TradingPlatformProvider {
   private readonly client: YPFClient;
 
-  // Program id → display name, cached: programs change rarely and resolving
-  // programName/nextProgramName per live-account fetch would otherwise be N calls.
-  private programNameCache: Map<string, { name: string; nextProgramId?: string }> | null =
-    null;
+  // Program id → display name + withdrawal flags, cached: programs change rarely
+  // and resolving them per live-account fetch would otherwise be N calls.
+  private programNameCache: Map<string, ProgramCacheEntry> | null = null;
   private programCacheAt = 0;
   private static readonly PROGRAM_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -387,6 +449,8 @@ export class YPFProvider implements TradingPlatformProvider {
           result.withdrawProfitTradingDays = a.withdrawProfitTradingDays;
         if (a.activeDays !== undefined) result.activeDays = a.activeDays;
         if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
+        const rules = mapWithdrawalRules(a.addOns);
+        if (rules) result.withdrawalRules = rules;
       }
     } catch (err) {
       logger.warn(
@@ -395,7 +459,8 @@ export class YPFProvider implements TradingPlatformProvider {
       );
     }
 
-    // Program display names (current + next phase) from the program catalog
+    // Program display names (current + next phase) + program-level withdrawal
+    // flags from the program catalog.
     if (programId) {
       try {
         const programs = await this.getProgramNameMap();
@@ -404,6 +469,23 @@ export class YPFProvider implements TradingPlatformProvider {
         if (info?.nextProgramId) {
           const nextName = programs.get(info.nextProgramId)?.name;
           if (nextName) result.nextProgramName = nextName;
+        }
+        if (
+          info &&
+          (info.isWithdrawalAllowed !== undefined ||
+            info.lowestAllowedWithdraw !== undefined)
+        ) {
+          const rules: AccountWithdrawalRules = { ...result.withdrawalRules };
+          if (info.isWithdrawalAllowed !== undefined)
+            rules.isWithdrawalAllowed = info.isWithdrawalAllowed;
+          // The effective floor is the larger of the program + per-account mins.
+          if (info.lowestAllowedWithdraw !== undefined) {
+            rules.minWithdrawalAmount = Math.max(
+              rules.minWithdrawalAmount ?? 0,
+              info.lowestAllowedWithdraw,
+            );
+          }
+          result.withdrawalRules = rules;
         }
       } catch (err) {
         logger.warn(
@@ -414,10 +496,8 @@ export class YPFProvider implements TradingPlatformProvider {
     }
   }
 
-  /** Cached program id → {name, nextProgramId} lookup. */
-  private async getProgramNameMap(): Promise<
-    Map<string, { name: string; nextProgramId?: string }>
-  > {
+  /** Cached program id → display name + withdrawal flags lookup. */
+  private async getProgramNameMap(): Promise<Map<string, ProgramCacheEntry>> {
     const now = Date.now();
     if (
       this.programNameCache &&
@@ -426,11 +506,17 @@ export class YPFProvider implements TradingPlatformProvider {
       return this.programNameCache;
     }
     const programs = await this.listPrograms();
-    const map = new Map<string, { name: string; nextProgramId?: string }>();
+    const map = new Map<string, ProgramCacheEntry>();
     for (const p of programs) {
       map.set(p.programId, {
         name: p.name,
         ...(p.nextProgramId !== undefined && { nextProgramId: p.nextProgramId }),
+        ...(p.isWithdrawalAllowed !== undefined && {
+          isWithdrawalAllowed: p.isWithdrawalAllowed,
+        }),
+        ...(p.lowestAllowedWithdraw !== undefined && {
+          lowestAllowedWithdraw: p.lowestAllowedWithdraw,
+        }),
       });
     }
     this.programNameCache = map;
@@ -692,8 +778,13 @@ export class YPFProvider implements TradingPlatformProvider {
     if (params?.platformAccountId) query['accountId'] = params.platformAccountId;
     if (params?.status) query['status'] = params.status;
     if (params?.pageToken) query['pageToken'] = params.pageToken;
-    const res = await this.client.get<YPFPayoutResponse[]>('/payouts', query);
-    return (res ?? []).map(mapPayout);
+    // NOTE: unlike /tenant/accounts and /programs (bare arrays), /payouts wraps
+    // its rows in a paginated envelope: v1 `{count, continuationToken, results}`,
+    // v2 `{total, offset, limit, results}`. Both expose `.results`, so reading it
+    // is correct for either API version (and forward-compatible if we flip to v2).
+    const res = await this.client.get<YPFPayoutsListResponse>('/payouts', query);
+    const rows = Array.isArray(res) ? res : (res?.results ?? []);
+    return rows.map(mapPayout);
   }
 
   async approvePayout(platformPayoutId: string): Promise<void> {
