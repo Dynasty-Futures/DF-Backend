@@ -67,11 +67,7 @@ export const updateProfile = async (
   userId: string,
   data: UpdateUserProfileData,
 ): Promise<SafeUser> => {
-  if (
-    data.firstName === undefined &&
-    data.lastName === undefined &&
-    data.phone === undefined
-  ) {
+  if (Object.values(data).every((v) => v === undefined)) {
     throw new ValidationError('No fields to update');
   }
 

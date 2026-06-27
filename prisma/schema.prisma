@@ -130,6 +130,17 @@ model User {
   status    UserStatus @default(PENDING_VERIFICATION)
   kycStatus KycStatus  @default(NOT_STARTED) @map("kyc_status")
 
+  // Optional profile/address fields (trader-editable on the dashboard profile).
+  // Stored as strings — dateOfBirth is a plain "YYYY-MM-DD" to avoid timezone
+  // drift on a date-only value.
+  dateOfBirth String? @map("date_of_birth")
+  address     String?
+  city        String?
+  state       String?
+  postalCode  String? @map("postal_code")
+  country     String?
+  timezone    String?
+
   // External platform mapping (provider-issued user ID — YPF UUID today)
   platformUserId String? @unique @map("platform_user_id")
 

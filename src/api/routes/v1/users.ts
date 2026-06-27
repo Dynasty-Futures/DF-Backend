@@ -32,16 +32,33 @@ const userFiltersSchema = z.object({
   search: z.string().max(100).optional(),
 });
 
+// Optional profile/address fields shared by self-service + admin updates.
+const profileExtraFields = {
+  dateOfBirth: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+    .nullable()
+    .optional(),
+  address: z.string().max(200).nullable().optional(),
+  city: z.string().max(100).nullable().optional(),
+  state: z.string().max(100).nullable().optional(),
+  postalCode: z.string().max(20).nullable().optional(),
+  country: z.string().max(100).nullable().optional(),
+  timezone: z.string().max(100).nullable().optional(),
+};
+
 const updateProfileSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   phone: z.string().max(20).nullable().optional(),
+  ...profileExtraFields,
 });
 
 const adminUpdateUserSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   phone: z.string().max(20).nullable().optional(),
+  ...profileExtraFields,
   role: z.nativeEnum(UserRole).optional(),
   status: z.nativeEnum(UserStatus).optional(),
 });
