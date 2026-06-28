@@ -824,6 +824,11 @@ model AffiliateApplication {
 
   status AffiliateApplicationStatus @default(PENDING)
 
+  // Affiliate Platform linkage — set when the applicant is registered as a
+  // partner on the external affiliate platform (best-effort at submit time).
+  platformPartnerId String? @map("platform_partner_id")
+  platformStatus    String? @map("platform_status")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

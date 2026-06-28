@@ -67,6 +67,10 @@ cors_origin = "http://localhost:8080,http://localhost:3001,http://localhost:5173
 # the prod tenant's program IDs and the startingBalance fix is deployed.
 account_discovery_enabled = true
 
+# Register affiliate applicants as partners on the Affiliate Platform when they
+# apply through the dashboard. Takes effect on the next `terraform apply`.
+affiliate_registration_enabled = true
+
 # Pre-create the YPF user at DF signup (fire-and-forget; never blocks signup).
 # Takes effect on the next `terraform apply` (Terraform-owned task-def env).
 ypf_auto_create_users = true

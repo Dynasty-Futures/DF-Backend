@@ -167,6 +167,12 @@ variable "account_discovery_enabled" {
   default     = false
 }
 
+variable "affiliate_registration_enabled" {
+  description = "Register affiliate applicants as partners on the Affiliate Platform when they apply. Off by default."
+  type        = bool
+  default     = false
+}
+
 variable "ypf_auto_create_users" {
   description = "Pre-create the YPF (trading-platform) user at DF signup (fire-and-forget; never blocks registration). Off by default."
   type        = bool

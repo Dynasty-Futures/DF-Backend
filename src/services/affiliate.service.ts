@@ -1,11 +1,18 @@
+import crypto from 'crypto';
 import { AffiliateApplication } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { ValidationError } from '../utils/errors.js';
 import { sendAffiliateApplicationNotification } from './email.service.js';
 import {
   createAffiliateApplication,
+  updateApplicationPlatformResult,
   CreateAffiliateApplicationData,
 } from '../repositories/affiliate.repository.js';
+import { getUserById } from '../repositories/user.repository.js';
+import {
+  isAffiliateRegistrationEnabled,
+  registerPartner,
+} from '../providers/affiliate/affiliate-platform.client.js';
 
 // =============================================================================
 // Affiliate Service
@@ -123,5 +130,82 @@ export const submitApplication = async (
     );
   });
 
+  // Fire-and-forget: register the applicant as a partner on the affiliate
+  // platform so the request reaches the affiliate CRM. Never fails the local
+  // submission. Only for logged-in applicants (anonymous lacks a name).
+  if (isAffiliateRegistrationEnabled() && input.creatorId) {
+    void registerOnAffiliatePlatform(application, input.creatorId).catch((err) => {
+      logger.error(
+        { err, applicationId: application.id },
+        'Failed to register affiliate on the affiliate platform'
+      );
+    });
+  }
+
   return application;
+};
+
+// Sanitize a preferred code to the affiliate platform's constraint
+// (^[A-Za-z0-9]{3,20}$); returns undefined when it can't be satisfied so the
+// platform assigns a code instead of rejecting the registration.
+const sanitizeAffiliateCode = (raw: string): string | undefined => {
+  const code = raw.replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+  return code.length >= 3 ? code : undefined;
+};
+
+const registerOnAffiliatePlatform = async (
+  application: AffiliateApplication,
+  creatorId: string
+): Promise<void> => {
+  const user = await getUserById(creatorId);
+  if (!user?.email || !user.firstName || !user.lastName) {
+    logger.warn(
+      { applicationId: application.id, creatorId },
+      'affiliate-platform: missing user name/email — skipping registration'
+    );
+    return;
+  }
+
+  const result = await registerPartner({
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    // Throwaway: the affiliate never logs into the affiliate platform directly;
+    // DF surfaces their data via service-token impersonation (Phase 2).
+    password: crypto.randomBytes(24).toString('base64url'),
+    externalId: creatorId,
+    preferredAffiliateCode: sanitizeAffiliateCode(application.preferredAffiliateCode),
+    metadata: {
+      dfApplicationId: application.id,
+      websiteUrl: application.websiteUrl,
+      youtubeUrl: application.youtubeUrl,
+      xUrl: application.xUrl,
+      instagramUrl: application.instagramUrl,
+      facebookUrl: application.facebookUrl,
+      telegramUrl: application.telegramUrl,
+      discordUrl: application.discordUrl,
+      isFundedTrader: application.isFundedTrader,
+      hasActiveDynastyAccount: application.hasActiveDynastyAccount,
+      promotionPlan: application.promotionPlan,
+      primaryTrafficMethod: application.primaryTrafficMethod,
+      createsCustomContent: application.createsCustomContent,
+      contentUpdateFrequency: application.contentUpdateFrequency,
+    },
+  });
+
+  if (result.alreadyExists) {
+    await updateApplicationPlatformResult(application.id, {
+      platformStatus: 'ALREADY_REGISTERED',
+    });
+    return;
+  }
+
+  await updateApplicationPlatformResult(application.id, {
+    platformPartnerId: result.partnerId,
+    platformStatus: result.status ?? 'REGISTERED',
+  });
+  logger.info(
+    { applicationId: application.id, partnerId: result.partnerId, status: result.status },
+    'affiliate-platform: partner registered'
+  );
 };

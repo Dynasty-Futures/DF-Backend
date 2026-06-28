@@ -64,6 +64,20 @@ const envSchema = z.object({
   // = endpoint disabled (returns 503).
   YPF_WEBHOOK_SECRET: z.string().optional(),
 
+  // Affiliate Platform API (separate Sigma/quant-technology service — partner
+  // registration, commissions, payouts). Registration is a PUBLIC endpoint that
+  // requires the tenant id header; Phase-2 dashboard reads will need a service
+  // token (not yet provided). Gated OFF by default — flip on in prod when ready.
+  AFFILIATE_API_URL: z
+    .string()
+    .url()
+    .default('https://affiliates.production.quant-technology.team'),
+  AFFILIATE_TENANT_ID: z.string().default('3e206eb1-645b-4d57-affd-e8e3dd061607'),
+  AFFILIATE_REGISTRATION_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
   VOLUMETRICA_API_KEY: z.string().optional(),
@@ -170,6 +184,11 @@ export const config = {
     webhook: {
       secret: env.YPF_WEBHOOK_SECRET,
     },
+  },
+  affiliate: {
+    apiUrl: env.AFFILIATE_API_URL,
+    tenantId: env.AFFILIATE_TENANT_ID,
+    registrationEnabled: env.AFFILIATE_REGISTRATION_ENABLED,
   },
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,
