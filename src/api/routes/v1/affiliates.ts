@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { affiliateService } from '../../../services/index.js';
-import { authenticate, optionalAuthenticate } from '../../middleware/auth.js';
+import { authenticate } from '../../middleware/auth.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -85,12 +85,13 @@ const validateBody = <T extends z.ZodSchema>(schema: T) => {
 /**
  * POST /affiliates/apply
  * Submit an affiliate program application.
- * Public endpoint — `optionalAuthenticate` attaches the user when logged in so
- * we can capture their email/ID, but anonymous submissions are accepted too.
+ * Authenticated only — applicants must be logged in so every application is tied
+ * to a real DF user (their id/email), which also drives the affiliate-platform
+ * partner registration. Anonymous submissions are rejected (401).
  */
 router.post(
   '/apply',
-  optionalAuthenticate,
+  authenticate,
   validateBody(applySchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -98,12 +99,12 @@ router.post(
 
       const application = await affiliateService.submitApplication({
         ...body,
-        creatorId: req.user?.id,
-        applicantEmail: req.user?.email,
+        creatorId: req.user!.id,
+        applicantEmail: req.user!.email,
       });
 
       logger.info(
-        { applicationId: application.id, userId: req.user?.id, ip: req.ip },
+        { applicationId: application.id, userId: req.user!.id, ip: req.ip },
         'Affiliate application submitted via API'
       );
 
