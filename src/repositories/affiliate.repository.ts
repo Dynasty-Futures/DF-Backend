@@ -54,3 +54,19 @@ export const createAffiliateApplication = async (
     },
   });
 };
+
+/**
+ * Record the affiliate-platform registration outcome on an application.
+ */
+export const updateApplicationPlatformResult = async (
+  id: string,
+  data: { platformPartnerId?: string | undefined; platformStatus?: string | undefined }
+): Promise<void> => {
+  await prisma.affiliateApplication.update({
+    where: { id },
+    data: {
+      ...(data.platformPartnerId && { platformPartnerId: data.platformPartnerId }),
+      ...(data.platformStatus && { platformStatus: data.platformStatus }),
+    },
+  });
+};

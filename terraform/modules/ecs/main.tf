@@ -245,6 +245,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CORS_ORIGIN", value = var.cors_origin },
         { name = "FRONTEND_URL", value = var.frontend_url },
         { name = "ACCOUNT_DISCOVERY_ENABLED", value = tostring(var.account_discovery_enabled) },
+        { name = "AFFILIATE_REGISTRATION_ENABLED", value = tostring(var.affiliate_registration_enabled) },
         { name = "YPF_AUTO_CREATE_USERS", value = tostring(var.ypf_auto_create_users) },
       ]
 
