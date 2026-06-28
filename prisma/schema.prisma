@@ -116,6 +116,12 @@ enum AffiliateApplicationStatus {
   REJECTED
 }
 
+enum AffiliateCouponStatus {
+  CREATED
+  APPROVED
+  REJECTED
+}
+
 // =============================================================================
 // USERS & AUTHENTICATION
 // =============================================================================
@@ -829,6 +835,10 @@ model AffiliateApplication {
   platformPartnerId String? @map("platform_partner_id")
   platformStatus    String? @map("platform_status")
 
+  // Referral code assigned by the affiliate platform (captured from the
+  // AffiliatePartnerRegistered webhook). Used to build the referral link.
+  referralCode String? @map("referral_code")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -840,6 +850,32 @@ model AffiliateApplication {
   @@index([createdAt])
   @@index([preferredAffiliateCode])
   @@map("affiliate_applications")
+}
+
+// A discount/referral coupon owned by an affiliate, mirrored from the affiliate
+// platform's AffiliateCoupon* webhooks. We can't read these back from the
+// affiliate API without a service token, so the webhook is the source of truth.
+// `creatorId` is the DF user id (the partnerExternalId we set at registration);
+// it's a plain indexed string (not an FK) because a coupon can belong to a
+// partner who registered directly on the affiliate platform with a non-DF id.
+model AffiliateCoupon {
+  id String @id @default(uuid())
+
+  platformCouponId  String  @unique @map("platform_coupon_id")
+  platformPartnerId String? @map("platform_partner_id")
+  creatorId         String? @map("creator_id")
+
+  code          String
+  discountType  String?               @map("discount_type")
+  discountValue Float                 @default(0) @map("discount_value")
+  status        AffiliateCouponStatus @default(CREATED)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([creatorId])
+  @@index([platformPartnerId])
+  @@map("affiliate_coupons")
 }
 
 model AdminNote {

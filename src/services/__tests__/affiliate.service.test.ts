@@ -1,7 +1,8 @@
-import { AffiliateApplicationStatus } from '@prisma/client';
+import { AffiliateApplicationStatus, AffiliateCouponStatus } from '@prisma/client';
 import {
   submitApplication,
   handleAffiliateWebhookEvent,
+  getMyAffiliateStatus,
   SubmitAffiliateApplicationInput,
 } from '../affiliate.service';
 import { ValidationError } from '../../utils/errors';
@@ -13,6 +14,9 @@ import { ValidationError } from '../../utils/errors';
 const mockCreateAffiliateApplication = jest.fn();
 const mockUpdateApplicationPlatformResult = jest.fn();
 const mockFindApplicationForWebhook = jest.fn();
+const mockFindLatestApplicationByCreator = jest.fn();
+const mockFindCouponsByCreator = jest.fn();
+const mockUpsertAffiliateCoupon = jest.fn();
 const mockSendAffiliateApplicationNotification = jest.fn();
 const mockGetUserById = jest.fn();
 const mockIsRegEnabled = jest.fn();
@@ -23,6 +27,10 @@ jest.mock('../../repositories/affiliate.repository', () => ({
   updateApplicationPlatformResult: (...args: unknown[]) =>
     mockUpdateApplicationPlatformResult(...args),
   findApplicationForWebhook: (...args: unknown[]) => mockFindApplicationForWebhook(...args),
+  findLatestApplicationByCreator: (...args: unknown[]) =>
+    mockFindLatestApplicationByCreator(...args),
+  findCouponsByCreator: (...args: unknown[]) => mockFindCouponsByCreator(...args),
+  upsertAffiliateCoupon: (...args: unknown[]) => mockUpsertAffiliateCoupon(...args),
 }));
 
 jest.mock('../../repositories/user.repository', () => ({
@@ -329,10 +337,52 @@ describe('handleAffiliateWebhookEvent', () => {
     );
   });
 
-  it('no-ops on non-status affiliate events (coupon/payout)', async () => {
-    await handleAffiliateWebhookEvent('AffiliateCouponCreated', { partnerId: 'p1' });
-    expect(mockFindApplicationForWebhook).not.toHaveBeenCalled();
+  it('captures referralCode on AffiliatePartnerRegistered without changing status', async () => {
+    mockFindApplicationForWebhook.mockResolvedValue({ id: 'app-r' });
+
+    await handleAffiliateWebhookEvent('AffiliatePartnerRegistered', {
+      partnerId: 'partner-9',
+      partnerExternalId: 'df-user-7',
+      referralCode: 'GOAT15',
+      webhookType: 'AffiliatePartnerRegistered',
+    });
+
+    expect(mockUpdateApplicationPlatformResult).toHaveBeenCalledWith('app-r', {
+      platformStatus: 'AffiliatePartnerRegistered',
+      platformPartnerId: 'partner-9',
+      referralCode: 'GOAT15',
+    });
+    // No `status` key — registration must not flip approval.
+    expect(mockUpdateApplicationPlatformResult.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
+  it('mirrors a coupon on AffiliateCouponApproved', async () => {
+    await handleAffiliateWebhookEvent('AffiliateCouponApproved', {
+      couponId: 'coupon-1',
+      code: 'SAVE20',
+      partnerId: 'partner-9',
+      partnerExternalId: 'df-user-7',
+      discountType: 'percent',
+      discountValue: 20,
+      webhookType: 'AffiliateCouponApproved',
+    });
+
+    expect(mockUpsertAffiliateCoupon).toHaveBeenCalledWith({
+      platformCouponId: 'coupon-1',
+      code: 'SAVE20',
+      status: AffiliateCouponStatus.APPROVED,
+      platformPartnerId: 'partner-9',
+      creatorId: 'df-user-7',
+      discountType: 'percent',
+      discountValue: 20,
+    });
+    // Coupon events never touch the application status.
     expect(mockUpdateApplicationPlatformResult).not.toHaveBeenCalled();
+  });
+
+  it('skips a coupon event missing couponId/code', async () => {
+    await handleAffiliateWebhookEvent('AffiliateCouponCreated', { partnerId: 'p1' });
+    expect(mockUpsertAffiliateCoupon).not.toHaveBeenCalled();
   });
 
   it('logs and no-ops when no local application matches', async () => {
@@ -343,5 +393,54 @@ describe('handleAffiliateWebhookEvent', () => {
     });
 
     expect(mockUpdateApplicationPlatformResult).not.toHaveBeenCalled();
+  });
+});
+
+describe('getMyAffiliateStatus', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns a not-applied shell when there is no application', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue(null);
+    mockFindCouponsByCreator.mockResolvedValue([]);
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    expect(result).toEqual({
+      hasApplied: false,
+      status: null,
+      isApproved: false,
+      preferredCode: null,
+      referralCode: null,
+      appliedAt: null,
+      coupons: [],
+    });
+  });
+
+  it('reports approval + referral code + coupons for an approved affiliate', async () => {
+    const appliedAt = new Date('2026-06-28T00:00:00.000Z');
+    mockFindLatestApplicationByCreator.mockResolvedValue({
+      status: AffiliateApplicationStatus.APPROVED,
+      preferredAffiliateCode: 'GOAT15',
+      referralCode: 'REF123',
+      createdAt: appliedAt,
+    });
+    mockFindCouponsByCreator.mockResolvedValue([
+      {
+        code: 'SAVE20',
+        discountType: 'percent',
+        discountValue: 20,
+        status: AffiliateCouponStatus.APPROVED,
+      },
+    ]);
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    expect(result.isApproved).toBe(true);
+    expect(result.referralCode).toBe('REF123');
+    expect(result.appliedAt).toBe('2026-06-28T00:00:00.000Z');
+    expect(result.coupons).toHaveLength(1);
+    expect(result.coupons[0]).toMatchObject({ code: 'SAVE20', discountValue: 20 });
   });
 });
