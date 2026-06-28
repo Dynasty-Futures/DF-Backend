@@ -5,7 +5,11 @@ import {
   ViolationSeverity,
   ViolationType,
 } from '@prisma/client';
-import { failChallenge, advanceChallenge } from '../challenge-transition.service';
+import {
+  failChallenge,
+  advanceChallenge,
+  reactivateChallenge,
+} from '../challenge-transition.service';
 
 // =============================================================================
 // Mocks
@@ -17,6 +21,7 @@ const mockChallengeUpdate = jest.fn();
 const mockChallengeCreate = jest.fn();
 const mockAccountUpdate = jest.fn();
 const mockRuleViolationCreate = jest.fn();
+const mockRuleViolationUpdateMany = jest.fn();
 
 jest.mock('../../utils/database', () => ({
   prisma: {
@@ -41,7 +46,10 @@ beforeEach(() => {
     const tx = {
       challenge: { update: mockChallengeUpdate, create: mockChallengeCreate },
       account: { update: mockAccountUpdate },
-      ruleViolation: { create: mockRuleViolationCreate },
+      ruleViolation: {
+        create: mockRuleViolationCreate,
+        updateMany: mockRuleViolationUpdateMany,
+      },
     };
     return fn(tx);
   });
@@ -200,6 +208,92 @@ describe('advanceChallenge', () => {
       ],
     });
     await advanceChallenge('acc-1');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// reactivateChallenge
+// =============================================================================
+
+describe('reactivateChallenge', () => {
+  const failedAccount = {
+    id: 'acc-1',
+    status: AccountStatus.FAILED,
+    challenges: [
+      { id: 'ch-1', status: ChallengeStatus.FAILED, phase: ChallengePhase.PHASE_1 },
+    ],
+  };
+
+  it('reopens the failed challenge and restores the account to its phase status', async () => {
+    mockAccountFindUnique.mockResolvedValue(failedAccount);
+
+    await reactivateChallenge('acc-1');
+
+    expect(mockChallengeUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ch-1' },
+        data: expect.objectContaining({
+          status: ChallengeStatus.ACTIVE,
+          completedAt: null,
+        }),
+      }),
+    );
+
+    expect(mockAccountUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'acc-1' },
+        data: expect.objectContaining({
+          status: AccountStatus.EVALUATION,
+          failedAt: null,
+          failedReason: null,
+        }),
+      }),
+    );
+
+    expect(mockRuleViolationUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { accountId: 'acc-1', causedFailure: true },
+        data: { causedFailure: false },
+      }),
+    );
+  });
+
+  it('restores a FUNDED-phase account back to FUNDED', async () => {
+    mockAccountFindUnique.mockResolvedValue({
+      ...failedAccount,
+      challenges: [
+        { id: 'ch-f', status: ChallengeStatus.FAILED, phase: ChallengePhase.FUNDED },
+      ],
+    });
+
+    await reactivateChallenge('acc-1');
+
+    expect(mockAccountUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: AccountStatus.FUNDED }),
+      }),
+    );
+  });
+
+  it('skips when the account is not failed (idempotent)', async () => {
+    mockAccountFindUnique.mockResolvedValue({
+      ...failedAccount,
+      status: AccountStatus.EVALUATION,
+    });
+    await reactivateChallenge('acc-1');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('skips when account not found', async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+    await reactivateChallenge('acc-missing');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('skips when there is no challenge to reopen', async () => {
+    mockAccountFindUnique.mockResolvedValue({ ...failedAccount, challenges: [] });
+    await reactivateChallenge('acc-1');
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

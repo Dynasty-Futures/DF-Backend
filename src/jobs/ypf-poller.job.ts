@@ -15,6 +15,7 @@ import { logger } from '../utils/logger.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
 import { getRedisClient } from '../utils/redis.js';
 import * as ypfSyncService from '../services/ypf-sync.service.js';
+import * as challengeTransitionService from '../services/challenge-transition.service.js';
 import * as payoutService from '../services/payout.service.js';
 import type { PlatformAccountResult } from '../providers/types.js';
 
@@ -106,6 +107,29 @@ export const reconcileRemovedAccounts = async (
   }
 };
 
+// Reactivate locally-failed accounts that YPF now reports as Active again —
+// staff reactivated a breached account on the CRM (AccountBreachedReactivated).
+// Uses the already-fetched live snapshot, so no extra API calls. Once restored,
+// the next poll picks the account up as active and resumes normal sync.
+export const reconcileReactivatedAccounts = async (
+  localAccounts: { id: string; status: AccountStatus; platformAccountId: string | null }[],
+  liveByPlatformId: Map<string, PlatformAccountResult>,
+): Promise<void> => {
+  let reactivated = 0;
+  for (const a of localAccounts) {
+    if (a.status !== AccountStatus.FAILED || !a.platformAccountId) continue;
+    const live = liveByPlatformId.get(a.platformAccountId);
+    if (live && ypfSyncService.isYpfActiveState(live.status)) {
+      await challengeTransitionService.reactivateChallenge(a.id);
+      reactivated++;
+    }
+  }
+
+  if (reactivated > 0) {
+    logger.info({ reactivated }, 'YPF poll: reactivated accounts restored upstream');
+  }
+};
+
 // Mirror YPF payout state (approved/rejected in the CRM) into local records.
 // Isolated so a payout-sync failure never aborts the account poll.
 const syncPayoutsSafe = async (): Promise<void> => {
@@ -169,6 +193,11 @@ export const runYPFPoll = async (): Promise<void> => {
   // Soft-delete accounts YPF removed (Disabled or absent from every list) —
   // runs for ALL local accounts, including ones with no active rows to poll.
   await reconcileRemovedAccounts(localAccounts, liveByPlatformId, sweepComplete);
+
+  // Restore locally-failed accounts that YPF has reactivated. Runs after the
+  // removal pass (a reactivated account is present + Active, so it's never
+  // soft-deleted here).
+  await reconcileReactivatedAccounts(localAccounts, liveByPlatformId);
 
   // Per-account breach/transition sync only applies to still-active accounts.
   const activeAccounts = localAccounts.filter(
