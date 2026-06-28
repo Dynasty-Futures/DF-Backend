@@ -609,14 +609,18 @@ export class YPFProvider implements TradingPlatformProvider {
   // trader-facing action — YPF's own dashboard "Upgrade Account" button hits
   // this endpoint, and it respects the `isLevelUpReached` eligibility gate.
   // (`manualupgrade` is the admin force-with-new-program path.)
+  //
+  // YPF's /upgrade responds 204 No Content (NO body) — it moves the account
+  // Active → UpgradePending. So we must NOT map the (empty) response; re-fetch
+  // the account afterwards to return its post-upgrade state.
   async upgradeAccount(
     platformUserId: string,
     platformAccountId: string,
   ): Promise<PlatformAccountResult> {
-    const res = await this.client.put<YPFAccountResponse>(
+    await this.client.put<void>(
       `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/upgrade`,
     );
-    return mapAccount(res);
+    return this.getAccount(platformUserId, platformAccountId);
   }
 
   async updateAccountBalance(
