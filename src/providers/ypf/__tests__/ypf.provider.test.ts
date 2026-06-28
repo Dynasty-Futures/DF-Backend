@@ -380,9 +380,11 @@ describe('YPFProvider', () => {
   });
 
   describe('upgradeAccount', () => {
-    it('PUTs the /upgrade endpoint and maps the returned account', async () => {
-      mockPut.mockResolvedValueOnce(
-        makeYpfAccount({ state: 'Active', isLevelUpReached: true }),
+    it('PUTs /upgrade (204 No Content) then re-fetches the post-upgrade account', async () => {
+      mockPut.mockResolvedValueOnce(undefined); // YPF /upgrade returns 204
+      // re-fetch: the account is now UpgradePending
+      mockGet.mockResolvedValueOnce(
+        makeYpfAccount({ state: 'UpgradePending', isLevelUpReached: true }),
       );
 
       const result = await provider.upgradeAccount('usr-001', 'acc-001');
@@ -390,8 +392,9 @@ describe('YPFProvider', () => {
       expect(mockPut).toHaveBeenCalledWith(
         '/users/usr-001/accounts/acc-001/upgrade',
       );
+      expect(mockGet).toHaveBeenCalledWith('/users/usr-001/accounts/acc-001');
       expect(result.platformAccountId).toBe('acc-001');
-      expect(result.isLevelUpReached).toBe(true);
+      expect(result.status).toBe('UpgradePending');
     });
   });
 

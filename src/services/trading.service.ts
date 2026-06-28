@@ -319,9 +319,13 @@ export const requestUpgrade = async (accountId: string, userId: string) => {
     ids.platformUserId,
     ids.platformAccountId,
   );
-  if (live.upgradeRequestDate) {
+  // YPF only upgrades an Active account; once requested it moves to
+  // `UpgradePending` and a second `/upgrade` 400s ("Account is not active").
+  // Catch any non-Active state here for a clean message + to keep the button
+  // from looping on the error.
+  if (live.upgradeRequestDate || live.status !== 'Active') {
     throw new BadRequestError(
-      'An upgrade has already been requested for this account.',
+      'This account is already being upgraded — it should finish shortly.',
     );
   }
   if (live.isLevelUpReached === false) {

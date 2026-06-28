@@ -126,6 +126,16 @@ describe('requestUpgrade', () => {
     expect(mockUpgradeAccount).not.toHaveBeenCalled();
   });
 
+  it('blocks when the account is not Active (e.g. already UpgradePending)', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(liveAccount({ status: 'UpgradePending' }));
+
+    await expect(requestUpgrade('acc-1', 'user-1')).rejects.toBeInstanceOf(
+      BadRequestError,
+    );
+    expect(mockUpgradeAccount).not.toHaveBeenCalled();
+  });
+
   it('still resolves when the post-upgrade sync fails (poller backstop)', async () => {
     mockAccountFindUnique.mockResolvedValue(linkedAccount());
     mockGetAccount.mockResolvedValue(liveAccount());
