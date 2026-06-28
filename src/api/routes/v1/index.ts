@@ -7,6 +7,7 @@ import accountsRoutes from './accounts.js';
 import tradingRoutes from './trading.js';
 import payoutsRoutes from './payouts.js';
 import journalRoutes from './journal.js';
+import kycRoutes from './kyc.js';
 import webhooksRoutes from './webhooks.js';
 
 // =============================================================================
@@ -28,6 +29,7 @@ router.use('/accounts', accountsRoutes);
 router.use('/trading', tradingRoutes);
 router.use('/payouts', payoutsRoutes);
 router.use('/journal', journalRoutes);
+router.use('/kyc', kycRoutes);
 router.use('/webhooks', webhooksRoutes);
 
 // router.use('/challenges', challengesRoutes);
@@ -46,6 +48,7 @@ router.get('/', (_req, res) => {
       trading: '/v1/trading',
       payouts: '/v1/payouts',
       journal: '/v1/journal',
+      kyc: '/v1/kyc',
       support: '/v1/support/tickets',
       affiliates: '/v1/affiliates/apply',
       webhooks: '/v1/webhooks/ypf',

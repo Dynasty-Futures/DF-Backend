@@ -243,6 +243,7 @@ const mapUser = (u: YPFUserResponse): PlatformUserResult => {
   if (u.profile?.city !== undefined) result.city = u.profile.city;
   if (u.profile?.state !== undefined) result.state = u.profile.state;
   if (u.profile?.country !== undefined) result.country = u.profile.country;
+  if (u.kycStatus !== undefined) result.kycStatus = u.kycStatus;
   const created = toDate(u.createdAt);
   if (created) result.createdAt = created;
   const updated = toDate(u.updateAt);
@@ -383,6 +384,17 @@ export class YPFProvider implements TradingPlatformProvider {
       `/users/${encodeURIComponent(platformUserId)}`,
     );
     return mapUser(res);
+  }
+
+  /**
+   * Request KYC for a user — flips YPF's requestKyc flag so the trader is
+   * prompted to complete identity verification (Sumsub) in the YPF portal.
+   * Returns 204; idempotent.
+   */
+  async requestKyc(platformUserId: string): Promise<void> {
+    await this.client.put<void>(
+      `/users/${encodeURIComponent(platformUserId)}/requestkyc`,
+    );
   }
 
   // ── Account Lifecycle ────────────────────────────────────────────────────
