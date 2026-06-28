@@ -1,17 +1,27 @@
-import { reconcileRemovedAccounts } from '../ypf-poller.job';
+import { AccountStatus } from '@prisma/client';
+import {
+  reconcileRemovedAccounts,
+  reconcileReactivatedAccounts,
+} from '../ypf-poller.job';
 import type { PlatformAccountResult } from '../../providers/types';
 
 // =============================================================================
-// Mocks — only ypf-sync is exercised by reconcileRemovedAccounts; the rest are
-// stubbed so the module graph loads cleanly.
+// Mocks — only ypf-sync / challenge-transition are exercised by the reconcile
+// passes; the rest are stubbed so the module graph loads cleanly.
 // =============================================================================
 
 const mockSoftDelete = jest.fn();
+const mockReactivate = jest.fn();
 
 jest.mock('../../services/ypf-sync.service', () => ({
   softDeleteRemovedAccount: (...args: unknown[]) => mockSoftDelete(...args),
   isYpfDisabledState: (state: string) =>
     state === 'Disabled' || state === 'disabled',
+  isYpfActiveState: (state: string) => state === 'Active' || state === 'active',
+}));
+
+jest.mock('../../services/challenge-transition.service', () => ({
+  reactivateChallenge: (...args: unknown[]) => mockReactivate(...args),
 }));
 
 jest.mock('../../utils/database', () => ({ prisma: {} }));
@@ -35,6 +45,12 @@ const live = (
 const localAcct = (id: string, platformAccountId: string | null) => ({
   id,
   platformAccountId,
+});
+
+const failedAcct = (id: string, platformAccountId: string | null) => ({
+  id,
+  platformAccountId,
+  status: AccountStatus.FAILED,
 });
 
 beforeEach(() => jest.clearAllMocks());
@@ -91,5 +107,38 @@ describe('reconcileRemovedAccounts', () => {
       true,
     );
     expect(mockSoftDelete).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// reconcileReactivatedAccounts
+// =============================================================================
+
+describe('reconcileReactivatedAccounts', () => {
+  it('reactivates a FAILED account that YPF now reports Active', async () => {
+    const map = new Map([['p1', live('p1', 'Active')]]);
+    await reconcileReactivatedAccounts([failedAcct('a1', 'p1')], map);
+    expect(mockReactivate).toHaveBeenCalledTimes(1);
+    expect(mockReactivate).toHaveBeenCalledWith('a1');
+  });
+
+  it('does NOT reactivate when YPF still reports the account Breached', async () => {
+    const map = new Map([['p1', live('p1', 'Breached')]]);
+    await reconcileReactivatedAccounts([failedAcct('a1', 'p1')], map);
+    expect(mockReactivate).not.toHaveBeenCalled();
+  });
+
+  it('ignores accounts that are not locally failed', async () => {
+    const map = new Map([['p1', live('p1', 'Active')]]);
+    await reconcileReactivatedAccounts(
+      [{ id: 'a1', platformAccountId: 'p1', status: AccountStatus.EVALUATION }],
+      map,
+    );
+    expect(mockReactivate).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the failed account is absent from the live snapshot', async () => {
+    await reconcileReactivatedAccounts([failedAcct('a1', 'p1')], new Map());
+    expect(mockReactivate).not.toHaveBeenCalled();
   });
 });

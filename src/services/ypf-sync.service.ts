@@ -33,6 +33,14 @@ const YPF_DISABLED = ['Disabled', 'disabled'];
 export const isYpfDisabledState = (state: string): boolean =>
   YPF_DISABLED.includes(state);
 
+// A reactivated account comes back as Active upstream. Used by the poller to
+// detect a locally-failed account that YPF has un-breached.
+const YPF_ACTIVE = ['Active', 'active'];
+
+/** Whether a YPF account state means the account is live/active. */
+export const isYpfActiveState = (state: string): boolean =>
+  YPF_ACTIVE.includes(state);
+
 // YPF has no "account passed" event and never emits a Funded/Upgraded *state* —
 // an account that passes evaluation is simply moved onto the funded program
 // (its programId changes to a terminal program with no `nextProgramId`). So we

@@ -92,6 +92,76 @@ export const failChallenge = async (
   );
 };
 
+// ── Reactivate Challenge ────────────────────────────────────────────────────
+// YPF staff can reactivate a breached account on the CRM
+// (AccountBreachedReactivated) — the account returns to Active upstream. We
+// mirror that by reopening the failed challenge and restoring the account to
+// the active status its phase implies. Inverse of failChallenge.
+
+const ACTIVE_STATUS_FOR_PHASE: Record<ChallengePhase, AccountStatus> = {
+  [ChallengePhase.PHASE_1]: AccountStatus.EVALUATION,
+  [ChallengePhase.PHASE_2]: AccountStatus.PHASE_2,
+  [ChallengePhase.FUNDED]: AccountStatus.FUNDED,
+};
+
+export const reactivateChallenge = async (accountId: string): Promise<void> => {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    include: {
+      challenges: { orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+
+  if (!account) {
+    logger.warn({ accountId }, 'reactivateChallenge: account not found');
+    return;
+  }
+
+  // Only a locally-failed account can be reactivated — guards against double
+  // processing if the poller runs the reconcile twice.
+  if (account.status !== AccountStatus.FAILED) {
+    logger.debug(
+      { accountId, status: account.status },
+      'reactivateChallenge: account not failed — skipping',
+    );
+    return;
+  }
+
+  const challenge = account.challenges[0];
+  if (!challenge) {
+    logger.warn({ accountId }, 'reactivateChallenge: no challenge to reopen');
+    return;
+  }
+
+  const restoredStatus = ACTIVE_STATUS_FOR_PHASE[challenge.phase];
+
+  logger.info(
+    { accountId, challengeId: challenge.id, restoredStatus },
+    'Reactivating challenge (YPF account reactivated)',
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.challenge.update({
+      where: { id: challenge.id },
+      data: { status: ChallengeStatus.ACTIVE, completedAt: null },
+    });
+
+    await tx.account.update({
+      where: { id: accountId },
+      data: { status: restoredStatus, failedAt: null, failedReason: null },
+    });
+
+    // The breach that failed this account was reversed upstream; the prior
+    // failure-causing violations no longer cause a failure.
+    await tx.ruleViolation.updateMany({
+      where: { accountId, causedFailure: true },
+      data: { causedFailure: false },
+    });
+  });
+
+  logger.info({ accountId }, 'Challenge reactivated and account restored');
+};
+
 // ── Advance Challenge ───────────────────────────────────────────────────────
 
 export const advanceChallenge = async (accountId: string): Promise<void> => {
