@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { affiliateService } from '../../../services/index.js';
-import { optionalAuthenticate } from '../../middleware/auth.js';
+import { authenticate, optionalAuthenticate } from '../../middleware/auth.js';
 import { ValidationError } from '../../../utils/errors.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -112,6 +112,25 @@ router.post(
         data: { id: application.id, status: application.status },
         message: 'Affiliate application submitted successfully',
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /affiliates/me
+ * The current user's affiliate status, referral code, and discount coupons —
+ * sourced from webhook-mirrored state. Earnings/performance/tier data require
+ * the affiliate-platform service token and are not included.
+ */
+router.get(
+  '/me',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const status = await affiliateService.getMyAffiliateStatus(req.user!.id);
+      res.json({ success: true, data: status });
     } catch (error) {
       next(error);
     }

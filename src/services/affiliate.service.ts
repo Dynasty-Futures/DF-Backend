@@ -1,5 +1,9 @@
 import crypto from 'crypto';
-import { AffiliateApplication, AffiliateApplicationStatus } from '@prisma/client';
+import {
+  AffiliateApplication,
+  AffiliateApplicationStatus,
+  AffiliateCouponStatus,
+} from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { ValidationError } from '../utils/errors.js';
 import { sendAffiliateApplicationNotification } from './email.service.js';
@@ -7,6 +11,9 @@ import {
   createAffiliateApplication,
   updateApplicationPlatformResult,
   findApplicationForWebhook,
+  findLatestApplicationByCreator,
+  findCouponsByCreator,
+  upsertAffiliateCoupon,
   CreateAffiliateApplicationData,
 } from '../repositories/affiliate.repository.js';
 import { getUserById } from '../repositories/user.repository.js';
@@ -226,12 +233,31 @@ const pick = (
   return undefined;
 };
 
+const pickNumber = (obj: Record<string, unknown>, key: string): number | undefined => {
+  const v = obj[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+};
+
+// The DF user id is set as the partner's externalId at registration; YPF echoes
+// it back under `partnerExternalId` (other keys are defensive fallbacks).
+const pickExternalId = (payload: Record<string, unknown>): string | undefined =>
+  pick(payload, ['partnerExternalId', 'externalId', 'partner.externalId', 'user.externalId']);
+
+const pickPartnerId = (payload: Record<string, unknown>): string | undefined =>
+  pick(payload, ['partnerId', 'partner.id', 'id']);
+
+const COUPON_STATUS_BY_EVENT: Record<string, AffiliateCouponStatus> = {
+  AffiliateCouponCreated: AffiliateCouponStatus.CREATED,
+  AffiliateCouponApproved: AffiliateCouponStatus.APPROVED,
+  AffiliateCouponRejected: AffiliateCouponStatus.REJECTED,
+};
+
 /**
- * Handle an affiliate webhook event from YPF (AffiliatePartnerApproved/Rejected,
- * etc.). The affiliate read API needs a service token we don't have yet, so we
- * can't re-fetch — local state is updated from the payload (the webhook endpoint
- * is secret-gated, so trusting the body is acceptable). The full payload is
- * logged so the first real event reveals the currently-undocumented contract.
+ * Handle an affiliate webhook event from YPF (AffiliatePartner* / AffiliateCoupon*).
+ * The affiliate read API needs a service token we don't have yet, so we can't
+ * re-fetch — local state is updated from the payload (the webhook endpoint is
+ * secret-gated, so trusting the body is acceptable). The full payload is logged
+ * so any contract drift is visible.
  */
 export const handleAffiliateWebhookEvent = async (
   eventType: string,
@@ -239,6 +265,17 @@ export const handleAffiliateWebhookEvent = async (
 ): Promise<void> => {
   logger.info({ eventType, payload }, 'affiliate-webhook: received event');
 
+  if (eventType in COUPON_STATUS_BY_EVENT) {
+    await handleCouponEvent(eventType, payload);
+    return;
+  }
+  await handlePartnerEvent(eventType, payload);
+};
+
+const handlePartnerEvent = async (
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> => {
   const status =
     eventType === 'AffiliatePartnerApproved'
       ? AffiliateApplicationStatus.APPROVED
@@ -246,21 +283,15 @@ export const handleAffiliateWebhookEvent = async (
         ? AffiliateApplicationStatus.REJECTED
         : undefined;
 
-  // Coupon / payout / registered events are logged only for now — wired once we
-  // have the payload contract + the service token.
-  if (!status) {
+  // AffiliatePartnerRegistered carries the referral code + partner id; capture
+  // them without changing the local approval status (still PENDING).
+  const isRegistered = eventType === 'AffiliatePartnerRegistered';
+  if (!status && !isRegistered) {
     return;
   }
 
-  const platformPartnerId = pick(payload, ['partnerId', 'partner.id', 'id']);
-  // YPF's affiliate payloads carry the DF user id (set as externalId at register
-  // time) under `partnerExternalId`; the other keys are defensive fallbacks.
-  const externalId = pick(payload, [
-    'partnerExternalId',
-    'externalId',
-    'partner.externalId',
-    'user.externalId',
-  ]);
+  const platformPartnerId = pickPartnerId(payload);
+  const externalId = pickExternalId(payload);
 
   const application = await findApplicationForWebhook({
     platformPartnerId,
@@ -275,12 +306,86 @@ export const handleAffiliateWebhookEvent = async (
   }
 
   await updateApplicationPlatformResult(application.id, {
-    status,
+    ...(status && { status }),
     platformStatus: eventType,
     platformPartnerId,
+    referralCode: pick(payload, ['referralCode']),
   });
   logger.info(
-    { applicationId: application.id, status },
-    'affiliate-webhook: application status updated'
+    { applicationId: application.id, eventType, status },
+    'affiliate-webhook: application updated'
   );
+};
+
+const handleCouponEvent = async (
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> => {
+  const platformCouponId = pick(payload, ['couponId', 'coupon.id', 'id']);
+  const code = pick(payload, ['code', 'coupon.code']);
+  if (!platformCouponId || !code) {
+    logger.warn({ eventType }, 'affiliate-webhook: coupon event missing couponId/code');
+    return;
+  }
+
+  await upsertAffiliateCoupon({
+    platformCouponId,
+    code,
+    status: COUPON_STATUS_BY_EVENT[eventType] ?? AffiliateCouponStatus.CREATED,
+    platformPartnerId: pickPartnerId(payload),
+    creatorId: pickExternalId(payload),
+    discountType: pick(payload, ['discountType']),
+    discountValue: pickNumber(payload, 'discountValue'),
+  });
+  logger.info({ eventType, platformCouponId, code }, 'affiliate-webhook: coupon mirrored');
+};
+
+// =============================================================================
+// Affiliate dashboard (read) — sourced from webhook-mirrored state
+// =============================================================================
+
+export interface AffiliateCouponView {
+  code: string;
+  discountType: string | null;
+  discountValue: number;
+  status: AffiliateCouponStatus;
+}
+
+export interface MyAffiliateStatus {
+  /** Whether the user has ever applied. */
+  hasApplied: boolean;
+  status: AffiliateApplicationStatus | null;
+  isApproved: boolean;
+  preferredCode: string | null;
+  referralCode: string | null;
+  appliedAt: string | null;
+  coupons: AffiliateCouponView[];
+}
+
+/**
+ * Build the affiliate dashboard payload for a user from locally-mirrored
+ * webhook state. Earnings / clicks / tier data are NOT available without the
+ * affiliate-platform service token, so they are intentionally absent here and
+ * rendered as "syncing" on the client.
+ */
+export const getMyAffiliateStatus = async (userId: string): Promise<MyAffiliateStatus> => {
+  const [application, coupons] = await Promise.all([
+    findLatestApplicationByCreator(userId),
+    findCouponsByCreator(userId),
+  ]);
+
+  return {
+    hasApplied: Boolean(application),
+    status: application?.status ?? null,
+    isApproved: application?.status === AffiliateApplicationStatus.APPROVED,
+    preferredCode: application?.preferredAffiliateCode ?? null,
+    referralCode: application?.referralCode ?? null,
+    appliedAt: application?.createdAt.toISOString() ?? null,
+    coupons: coupons.map((c) => ({
+      code: c.code,
+      discountType: c.discountType,
+      discountValue: c.discountValue,
+      status: c.status,
+    })),
+  };
 };

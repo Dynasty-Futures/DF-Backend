@@ -1,4 +1,10 @@
-import { AffiliateApplication, AffiliateApplicationStatus, Prisma } from '@prisma/client';
+import {
+  AffiliateApplication,
+  AffiliateApplicationStatus,
+  AffiliateCoupon,
+  AffiliateCouponStatus,
+  Prisma,
+} from '@prisma/client';
 import { prisma } from '../utils/database.js';
 
 // =============================================================================
@@ -64,6 +70,7 @@ export const updateApplicationPlatformResult = async (
     platformPartnerId?: string | undefined;
     platformStatus?: string | undefined;
     status?: AffiliateApplicationStatus | undefined;
+    referralCode?: string | undefined;
   }
 ): Promise<void> => {
   await prisma.affiliateApplication.update({
@@ -72,7 +79,61 @@ export const updateApplicationPlatformResult = async (
       ...(data.platformPartnerId && { platformPartnerId: data.platformPartnerId }),
       ...(data.platformStatus && { platformStatus: data.platformStatus }),
       ...(data.status && { status: data.status }),
+      ...(data.referralCode && { referralCode: data.referralCode }),
     },
+  });
+};
+
+/**
+ * Most recent application for a DF user — drives the affiliate dashboard's
+ * approval state, preferred code, and referral link.
+ */
+export const findLatestApplicationByCreator = async (
+  creatorId: string
+): Promise<AffiliateApplication | null> => {
+  return prisma.affiliateApplication.findFirst({
+    where: { creatorId },
+    orderBy: { createdAt: 'desc' },
+  });
+};
+
+/**
+ * Coupons owned by a DF user (matched on the partnerExternalId we set at
+ * registration), most recent first.
+ */
+export const findCouponsByCreator = async (creatorId: string): Promise<AffiliateCoupon[]> => {
+  return prisma.affiliateCoupon.findMany({
+    where: { creatorId },
+    orderBy: { createdAt: 'desc' },
+  });
+};
+
+/**
+ * Mirror an affiliate-platform coupon locally (idempotent on platformCouponId).
+ * Webhook is the source of truth, so a later event overwrites mutable fields.
+ */
+export const upsertAffiliateCoupon = async (data: {
+  platformCouponId: string;
+  platformPartnerId?: string | undefined;
+  creatorId?: string | undefined;
+  code: string;
+  discountType?: string | undefined;
+  discountValue?: number | undefined;
+  status: AffiliateCouponStatus;
+}): Promise<void> => {
+  const mutable = {
+    code: data.code,
+    status: data.status,
+    ...(data.platformPartnerId && { platformPartnerId: data.platformPartnerId }),
+    ...(data.creatorId && { creatorId: data.creatorId }),
+    ...(data.discountType && { discountType: data.discountType }),
+    ...(data.discountValue !== undefined && { discountValue: data.discountValue }),
+  };
+
+  await prisma.affiliateCoupon.upsert({
+    where: { platformCouponId: data.platformCouponId },
+    create: { platformCouponId: data.platformCouponId, ...mutable },
+    update: mutable,
   });
 };
 
