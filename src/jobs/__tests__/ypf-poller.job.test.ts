@@ -2,6 +2,7 @@ import { AccountStatus } from '@prisma/client';
 import {
   reconcileRemovedAccounts,
   reconcileReactivatedAccounts,
+  reconcileRestoredAccounts,
 } from '../ypf-poller.job';
 import type { PlatformAccountResult } from '../../providers/types';
 
@@ -24,7 +25,17 @@ jest.mock('../../services/challenge-transition.service', () => ({
   reactivateChallenge: (...args: unknown[]) => mockReactivate(...args),
 }));
 
-jest.mock('../../utils/database', () => ({ prisma: {} }));
+const mockFindMany = jest.fn();
+const mockUpdate = jest.fn();
+
+jest.mock('../../utils/database', () => ({
+  prisma: {
+    account: {
+      findMany: (...args: unknown[]) => mockFindMany(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
+    },
+  },
+}));
 jest.mock('../../utils/redis', () => ({ getRedisClient: () => null }));
 jest.mock('../../providers/index', () => ({ getTradingPlatformProvider: () => ({}) }));
 jest.mock('../../services/payout.service', () => ({ syncPayouts: jest.fn() }));
@@ -140,5 +151,45 @@ describe('reconcileReactivatedAccounts', () => {
   it('does nothing when the failed account is absent from the live snapshot', async () => {
     await reconcileReactivatedAccounts([failedAcct('a1', 'p1')], new Map());
     expect(mockReactivate).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// reconcileRestoredAccounts
+// =============================================================================
+
+describe('reconcileRestoredAccounts', () => {
+  it('restores a soft-deleted account that YPF still reports (e.g. UpgradePending)', async () => {
+    mockFindMany.mockResolvedValue([{ id: 'a1', platformAccountId: 'p1' }]);
+    const map = new Map([['p1', live('p1', 'UpgradePending')]]);
+
+    await reconcileRestoredAccounts(map);
+
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'a1' },
+        data: expect.objectContaining({
+          deletedAt: null,
+          status: AccountStatus.EVALUATION,
+        }),
+      }),
+    );
+  });
+
+  it('does NOT restore an account YPF reports as Disabled (genuinely removed)', async () => {
+    mockFindMany.mockResolvedValue([{ id: 'a1', platformAccountId: 'p1' }]);
+    const map = new Map([['p1', live('p1', 'Disabled')]]);
+
+    await reconcileRestoredAccounts(map);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does NOT restore an account absent from the live sweep (truly gone)', async () => {
+    mockFindMany.mockResolvedValue([{ id: 'a1', platformAccountId: 'p1' }]);
+
+    await reconcileRestoredAccounts(new Map());
+
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
