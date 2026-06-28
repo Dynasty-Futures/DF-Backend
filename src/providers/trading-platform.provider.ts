@@ -61,6 +61,11 @@ export interface TradingPlatformProvider {
     platformUserId: string,
     platformAccountId: string,
   ): Promise<PlatformAccountResult>;
+  /** Standard upgrade to the next program level (eval → funded). */
+  upgradeAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformAccountResult>;
   updateAccountBalance(
     platformUserId: string,
     platformAccountId: string,

@@ -8,11 +8,17 @@
 
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-import { NotFoundError, ForbiddenError, PlatformError } from '../utils/errors.js';
+import {
+  NotFoundError,
+  ForbiddenError,
+  BadRequestError,
+  PlatformError,
+} from '../utils/errors.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
 import { getVolumetricaIFrameUrl } from '../providers/volumetrica/volumetrica-sso.js';
 import { config } from '../config/index.js';
 import * as syncService from './sync.service.js';
+import * as ypfSyncService from './ypf-sync.service.js';
 
 // =============================================================================
 // Helpers
@@ -268,6 +274,81 @@ export const resetAccount = async (accountId: string, userId: string) => {
 
   const result = await provider.resetAccount(ids.platformUserId, ids.platformAccountId);
   await syncService.syncAccountFromPlatform(accountId, result);
+
+  return result;
+};
+
+/**
+ * Request an evaluation → funded upgrade for an account that has met its profit
+ * target. Mirrors YPF's own dashboard "Upgrade Account" button (the `/upgrade`
+ * endpoint, which respects the platform's `isLevelUpReached` eligibility gate).
+ *
+ * We pre-screen on YPF's OWN signal so the trader gets a clean error instead of
+ * a raw 400: read the live account, and block only when YPF explicitly reports
+ * the level-up has NOT been reached. If the flag is absent (undefined), stay
+ * permissive and let YPF be the final authority. After the upgrade we run the
+ * normal YPF sync so the local challenge advances to FUNDED immediately; the
+ * 1-minute poller is the backstop.
+ *
+ * NOTE: Standard accounts are NOT upgraded here — going funded on a Standard
+ * plan requires a paid $80 activation (a WooCommerce checkout → YPF's
+ * `/activation`), so a free `/upgrade` would let the trader skip the fee. We
+ * reject Standard defensively; the dashboard routes them to the activation
+ * checkout instead. Advanced/Builder (Dynasty) have no activation fee.
+ */
+export const requestUpgrade = async (accountId: string, userId: string) => {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId, deletedAt: null },
+    include: { accountType: { select: { name: true } } },
+  });
+
+  if (!account) throw new NotFoundError('Account not found');
+  if (account.userId !== userId) throw new ForbiddenError('Not your account');
+
+  if (account.accountType?.name?.toUpperCase().startsWith('STANDARD')) {
+    throw new BadRequestError(
+      'Standard accounts go funded via a paid activation, not a direct upgrade. Use the activation checkout.',
+    );
+  }
+
+  const ids = requirePlatformIds(account);
+  const provider = getTradingPlatformProvider();
+
+  // Read YPF's own eligibility verdict before attempting the upgrade.
+  const live = await provider.getAccount(
+    ids.platformUserId,
+    ids.platformAccountId,
+  );
+  if (live.upgradeRequestDate) {
+    throw new BadRequestError(
+      'An upgrade has already been requested for this account.',
+    );
+  }
+  if (live.isLevelUpReached === false) {
+    throw new BadRequestError(
+      "This account hasn't met the profit target required to upgrade yet.",
+    );
+  }
+
+  const result = await provider.upgradeAccount(
+    ids.platformUserId,
+    ids.platformAccountId,
+  );
+
+  // Reconcile immediately so the dashboard reflects FUNDED without waiting for
+  // the next poll. Best-effort — the upgrade already succeeded upstream, so a
+  // sync hiccup must not surface as a failed request (the poller will catch up).
+  try {
+    await ypfSyncService.syncAccountFromYPF({
+      localAccountId: accountId,
+      liveAccount: result,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, accountId },
+      'requestUpgrade: post-upgrade sync failed — poller will reconcile',
+    );
+  }
 
   return result;
 };

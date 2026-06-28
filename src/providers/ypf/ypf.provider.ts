@@ -62,6 +62,8 @@ interface YPFAccountResponse {
   withdrawProfitTradingDays?: number;
   activeDays?: number;
   profitSplit?: number;
+  isLevelUpReached?: boolean;
+  upgradeRequestDate?: string | null;
   extraValues?: YPFExtraValueEntry[];
 }
 
@@ -214,6 +216,9 @@ const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
     result.withdrawProfitTradingDays = a.withdrawProfitTradingDays;
   if (a.activeDays !== undefined) result.activeDays = a.activeDays;
   if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
+  if (a.isLevelUpReached !== undefined)
+    result.isLevelUpReached = a.isLevelUpReached;
+  if (a.upgradeRequestDate) result.upgradeRequestDate = a.upgradeRequestDate;
   // The trading platform's "Login ID" is the trader's EMAIL (what the hosted
   // Volumetrica portal prompts for), not YPF's internal account login id. Fall
   // back to a.login only when the account has no email.
@@ -596,6 +601,20 @@ export class YPFProvider implements TradingPlatformProvider {
   ): Promise<PlatformAccountResult> {
     const res = await this.client.put<YPFAccountResponse>(
       `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/manualupgrade`,
+    );
+    return mapAccount(res);
+  }
+
+  // Standard upgrade to the next program level (eval → funded). This is the
+  // trader-facing action — YPF's own dashboard "Upgrade Account" button hits
+  // this endpoint, and it respects the `isLevelUpReached` eligibility gate.
+  // (`manualupgrade` is the admin force-with-new-program path.)
+  async upgradeAccount(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<PlatformAccountResult> {
+    const res = await this.client.put<YPFAccountResponse>(
+      `/users/${encodeURIComponent(platformUserId)}/accounts/${encodeURIComponent(platformAccountId)}/upgrade`,
     );
     return mapAccount(res);
   }

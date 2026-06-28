@@ -379,6 +379,22 @@ describe('YPFProvider', () => {
     });
   });
 
+  describe('upgradeAccount', () => {
+    it('PUTs the /upgrade endpoint and maps the returned account', async () => {
+      mockPut.mockResolvedValueOnce(
+        makeYpfAccount({ state: 'Active', isLevelUpReached: true }),
+      );
+
+      const result = await provider.upgradeAccount('usr-001', 'acc-001');
+
+      expect(mockPut).toHaveBeenCalledWith(
+        '/users/usr-001/accounts/acc-001/upgrade',
+      );
+      expect(result.platformAccountId).toBe('acc-001');
+      expect(result.isLevelUpReached).toBe(true);
+    });
+  });
+
   // ── Breaches ─────────────────────────────────────────────────────────────
 
   describe('getAccountBreaches', () => {

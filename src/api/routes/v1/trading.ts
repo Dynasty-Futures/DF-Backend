@@ -163,6 +163,25 @@ router.post(
 );
 
 /**
+ * POST /v1/trading/accounts/:id/upgrade
+ * **LIVE + on-write sync** — upgrade eval → funded on YPF (mirrors YPF's own
+ * "Upgrade Account" button), then reconcile the local challenge to FUNDED.
+ */
+router.post(
+  '/accounts/:id/upgrade',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const accountId = req.params['id'] as string;
+      const result = await tradingService.requestUpgrade(accountId, req.user!.id);
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
  * GET /v1/trading/dashboard-url
  * **LIVE** — one-time-use token from provider.
  */

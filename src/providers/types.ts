@@ -158,6 +158,12 @@ export interface PlatformAccountResult {
   /** Drawdown metrics (current + high-water) */
   drawDown?: number | undefined;
   maxDrawDown?: number | undefined;
+  /** YPF flag: the account has met its profit target and can be upgraded to the
+   * next program level (eval → funded). Drives the "Upgrade" CTA. */
+  isLevelUpReached?: boolean | undefined;
+  /** ISO timestamp set once an upgrade has been requested (sparse — not on the
+   * plain account GET, present on richer responses). Absent = no pending upgrade. */
+  upgradeRequestDate?: string | undefined;
   /** Provider-issued login credentials surfaced at account creation time */
   loginCredentials?: { login: string; password: string } | undefined;
   /** Provider-specific overflow (e.g. YPF's `extraValues` carrying VolumetricaUserId) */
