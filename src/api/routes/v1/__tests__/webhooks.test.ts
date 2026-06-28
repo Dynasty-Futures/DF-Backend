@@ -20,6 +20,11 @@ jest.mock('../../../../services/account-discovery.service', () => ({
   triggerDiscoverySweep: (...args: unknown[]) => mockTrigger(...args),
 }));
 
+const mockHandleAffiliate = jest.fn();
+jest.mock('../../../../services/affiliate.service', () => ({
+  handleAffiliateWebhookEvent: (...args: unknown[]) => mockHandleAffiliate(...args),
+}));
+
 jest.mock('../../../../utils/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
@@ -39,6 +44,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockConfig.ypf.webhook.secret = SECRET;
   mockConfig.ypf.discovery.enabled = true;
+  mockHandleAffiliate.mockResolvedValue(undefined);
 });
 
 // =============================================================================
@@ -113,5 +119,32 @@ describe('POST /v1/webhooks/ypf', () => {
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ success: true, triggered: false });
     expect(mockTrigger).not.toHaveBeenCalled();
+  });
+
+  it('routes Affiliate* events to the affiliate handler (no discovery sweep)', async () => {
+    const res = await request(buildApp())
+      .post('/v1/webhooks/ypf')
+      .set('X-Webhook-Secret', SECRET)
+      .send({ webhookType: 'AffiliatePartnerApproved', externalId: 'user-1' });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ success: true, handled: 'affiliate' });
+    expect(mockHandleAffiliate).toHaveBeenCalledWith(
+      'AffiliatePartnerApproved',
+      expect.objectContaining({ externalId: 'user-1' })
+    );
+    expect(mockTrigger).not.toHaveBeenCalled();
+  });
+
+  it('triggers discovery (not affiliate) for AccountCreated via webhookType', async () => {
+    const res = await request(buildApp())
+      .post('/v1/webhooks/ypf')
+      .set('X-Webhook-Secret', SECRET)
+      .send({ webhookType: 'AccountCreated' });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ success: true, triggered: true });
+    expect(mockTrigger).toHaveBeenCalledTimes(1);
+    expect(mockHandleAffiliate).not.toHaveBeenCalled();
   });
 });
