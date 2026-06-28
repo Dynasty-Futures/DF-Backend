@@ -1,4 +1,4 @@
-import { Prisma, UserRole, UserStatus } from '@prisma/client';
+import { Prisma, UserRole, UserStatus, KycStatus } from '@prisma/client';
 import { prisma } from '../utils/database.js';
 import type { SafeUser } from './auth.repository.js';
 
@@ -161,6 +161,19 @@ export const getUserById = async (id: string): Promise<SafeUser | null> => {
     where: { id, deletedAt: null },
     select: safeUserSelect,
   }) as Promise<SafeUser | null>;
+};
+
+/**
+ * Update a user's KYC verification status (synced from the trading platform).
+ */
+export const updateKycStatus = async (
+  id: string,
+  kycStatus: KycStatus
+): Promise<void> => {
+  await prisma.user.update({
+    where: { id },
+    data: { kycStatus },
+  });
 };
 
 /**

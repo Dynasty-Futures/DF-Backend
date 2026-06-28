@@ -15,3 +15,4 @@ export * as ypfSyncService from './ypf-sync.service.js';
 export * as payoutService from './payout.service.js';
 export * as accountDiscoveryService from './account-discovery.service.js';
 export * as journalService from './journal.service.js';
+export * as kycService from './kyc.service.js';

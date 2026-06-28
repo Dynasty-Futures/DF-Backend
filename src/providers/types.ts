@@ -75,6 +75,8 @@ export interface PlatformUserResult {
   organizationStatus?: number | undefined;
   webAccessDisabled?: boolean | undefined;
   extEntityId?: string | undefined;
+  /** Raw YPF KYC verification status (e.g. "None", "Pending", "Approved"). */
+  kycStatus?: string | undefined;
   createdAt?: Date | undefined;
   updatedAt?: Date | undefined;
 }

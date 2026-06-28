@@ -31,6 +31,7 @@ export interface TradingPlatformProvider {
 
   createUser(params: CreatePlatformUserParams): Promise<PlatformUserResult>;
   getUser(platformUserId: string): Promise<PlatformUserResult>;
+  requestKyc(platformUserId: string): Promise<void>;
 
   // ── Account Lifecycle ────────────────────────────────────────────────────
 
