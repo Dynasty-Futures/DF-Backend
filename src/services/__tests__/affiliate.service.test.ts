@@ -306,6 +306,29 @@ describe('handleAffiliateWebhookEvent', () => {
     );
   });
 
+  it('matches by partnerExternalId (YPF real payload shape)', async () => {
+    mockFindApplicationForWebhook.mockResolvedValue({ id: 'app-3' });
+
+    // Real YPF payload: linkage is on `partnerExternalId`, not `externalId`.
+    await handleAffiliateWebhookEvent('AffiliatePartnerApproved', {
+      approvedBy: 'John',
+      partnerId: 'a449ef1a-02c2-4d8c-b00b-a24153f42b19',
+      partnerEmail: 'john@example.com',
+      partnerExternalId: 'df-user-42',
+      webhookType: 'AffiliatePartnerApproved',
+      testMode: true,
+    });
+
+    expect(mockFindApplicationForWebhook).toHaveBeenCalledWith({
+      platformPartnerId: 'a449ef1a-02c2-4d8c-b00b-a24153f42b19',
+      creatorId: 'df-user-42',
+    });
+    expect(mockUpdateApplicationPlatformResult).toHaveBeenCalledWith(
+      'app-3',
+      expect.objectContaining({ status: AffiliateApplicationStatus.APPROVED })
+    );
+  });
+
   it('no-ops on non-status affiliate events (coupon/payout)', async () => {
     await handleAffiliateWebhookEvent('AffiliateCouponCreated', { partnerId: 'p1' });
     expect(mockFindApplicationForWebhook).not.toHaveBeenCalled();

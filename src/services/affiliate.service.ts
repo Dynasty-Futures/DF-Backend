@@ -253,7 +253,10 @@ export const handleAffiliateWebhookEvent = async (
   }
 
   const platformPartnerId = pick(payload, ['partnerId', 'partner.id', 'id']);
+  // YPF's affiliate payloads carry the DF user id (set as externalId at register
+  // time) under `partnerExternalId`; the other keys are defensive fallbacks.
   const externalId = pick(payload, [
+    'partnerExternalId',
     'externalId',
     'partner.externalId',
     'user.externalId',
