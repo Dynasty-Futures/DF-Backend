@@ -1,5 +1,9 @@
 import { AffiliateApplicationStatus } from '@prisma/client';
-import { submitApplication, SubmitAffiliateApplicationInput } from '../affiliate.service';
+import {
+  submitApplication,
+  handleAffiliateWebhookEvent,
+  SubmitAffiliateApplicationInput,
+} from '../affiliate.service';
 import { ValidationError } from '../../utils/errors';
 
 // =============================================================================
@@ -8,6 +12,7 @@ import { ValidationError } from '../../utils/errors';
 
 const mockCreateAffiliateApplication = jest.fn();
 const mockUpdateApplicationPlatformResult = jest.fn();
+const mockFindApplicationForWebhook = jest.fn();
 const mockSendAffiliateApplicationNotification = jest.fn();
 const mockGetUserById = jest.fn();
 const mockIsRegEnabled = jest.fn();
@@ -17,6 +22,7 @@ jest.mock('../../repositories/affiliate.repository', () => ({
   createAffiliateApplication: (...args: unknown[]) => mockCreateAffiliateApplication(...args),
   updateApplicationPlatformResult: (...args: unknown[]) =>
     mockUpdateApplicationPlatformResult(...args),
+  findApplicationForWebhook: (...args: unknown[]) => mockFindApplicationForWebhook(...args),
 }));
 
 jest.mock('../../repositories/user.repository', () => ({
@@ -260,3 +266,59 @@ describe('affiliateService.submitApplication', () => {
 });
 
 const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+describe('handleAffiliateWebhookEvent', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUpdateApplicationPlatformResult.mockResolvedValue(undefined);
+  });
+
+  it('marks the application APPROVED on AffiliatePartnerApproved (matched by externalId)', async () => {
+    mockFindApplicationForWebhook.mockResolvedValue({ id: 'app-1' });
+
+    await handleAffiliateWebhookEvent('AffiliatePartnerApproved', {
+      webhookType: 'AffiliatePartnerApproved',
+      externalId: 'user-1',
+      partnerId: 'partner-9',
+    });
+
+    expect(mockFindApplicationForWebhook).toHaveBeenCalledWith({
+      platformPartnerId: 'partner-9',
+      creatorId: 'user-1',
+    });
+    expect(mockUpdateApplicationPlatformResult).toHaveBeenCalledWith('app-1', {
+      status: AffiliateApplicationStatus.APPROVED,
+      platformStatus: 'AffiliatePartnerApproved',
+      platformPartnerId: 'partner-9',
+    });
+  });
+
+  it('marks the application REJECTED on AffiliatePartnerRejected', async () => {
+    mockFindApplicationForWebhook.mockResolvedValue({ id: 'app-2' });
+
+    await handleAffiliateWebhookEvent('AffiliatePartnerRejected', {
+      partner: { externalId: 'user-2' },
+    });
+
+    expect(mockUpdateApplicationPlatformResult).toHaveBeenCalledWith(
+      'app-2',
+      expect.objectContaining({ status: AffiliateApplicationStatus.REJECTED })
+    );
+  });
+
+  it('no-ops on non-status affiliate events (coupon/payout)', async () => {
+    await handleAffiliateWebhookEvent('AffiliateCouponCreated', { partnerId: 'p1' });
+    expect(mockFindApplicationForWebhook).not.toHaveBeenCalled();
+    expect(mockUpdateApplicationPlatformResult).not.toHaveBeenCalled();
+  });
+
+  it('logs and no-ops when no local application matches', async () => {
+    mockFindApplicationForWebhook.mockResolvedValue(null);
+
+    await handleAffiliateWebhookEvent('AffiliatePartnerApproved', {
+      externalId: 'unknown-user',
+    });
+
+    expect(mockUpdateApplicationPlatformResult).not.toHaveBeenCalled();
+  });
+});
