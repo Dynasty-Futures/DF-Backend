@@ -38,6 +38,12 @@ const ACTIVE_STATUSES: AccountStatus[] = [
 //      in (Inactive/Pending/Upgraded) or we'd wrongly delete those.
 // NB: YPF drops permanently-removed accounts from ALL lists (the Disabled list
 // comes back empty), so absence — not a "Disabled" flag — is the real signal.
+//
+// CRITICAL: this MUST include every transient state, or an account that's
+// legitimately mid-flow gets read as "removed" and soft-deleted. e.g. an
+// account awaiting upgrade approval sits in `UpgradePending` — absent from the
+// active states, so omitting it nuked passing accounts. All of these return 200
+// from /tenant/accounts (an unknown filter would 400 → incomplete sweep).
 const POLL_STATUSES = [
   'Active',
   'Breached',
@@ -45,6 +51,10 @@ const POLL_STATUSES = [
   'Inactive',
   'Pending',
   'Upgraded',
+  'UpgradePending',
+  'KYCPending',
+  'WaitingWithdrawal',
+  'WaitingCompetition',
 ];
 
 const readLastPollAt = async (): Promise<Date | undefined> => {
@@ -130,6 +140,50 @@ export const reconcileReactivatedAccounts = async (
   }
 };
 
+// Recover accounts that were wrongly soft-deleted (CLOSED + deletedAt) while in
+// a transient state but are still alive on YPF. Before the POLL_STATUSES fix, a
+// passing account awaiting upgrade approval (`UpgradePending`) was absent from
+// the sweep and got removed; this heals those. Restores to EVALUATION — the
+// next poll's normal sync re-derives FUNDED/FAILED from the live state. Skips
+// accounts YPF reports Disabled (those are genuinely gone).
+export const reconcileRestoredAccounts = async (
+  liveByPlatformId: Map<string, PlatformAccountResult>,
+): Promise<void> => {
+  const deleted = await prisma.account.findMany({
+    where: {
+      deletedAt: { not: null },
+      status: AccountStatus.CLOSED,
+      platformAccountId: { not: null },
+    },
+    select: { id: true, platformAccountId: true },
+  });
+
+  let restored = 0;
+  for (const a of deleted) {
+    if (!a.platformAccountId) continue;
+    const live = liveByPlatformId.get(a.platformAccountId);
+    if (live && !ypfSyncService.isYpfDisabledState(live.status)) {
+      await prisma.account.update({
+        where: { id: a.id },
+        data: {
+          deletedAt: null,
+          status: AccountStatus.EVALUATION,
+          failedAt: null,
+          failedReason: null,
+        },
+      });
+      restored++;
+    }
+  }
+
+  if (restored > 0) {
+    logger.info(
+      { restored },
+      'YPF poll: restored accounts wrongly removed while in a transient state',
+    );
+  }
+};
+
 // Mirror YPF payout state (approved/rejected in the CRM) into local records.
 // Isolated so a payout-sync failure never aborts the account poll.
 const syncPayoutsSafe = async (): Promise<void> => {
@@ -198,6 +252,10 @@ export const runYPFPoll = async (): Promise<void> => {
   // removal pass (a reactivated account is present + Active, so it's never
   // soft-deleted here).
   await reconcileReactivatedAccounts(localAccounts, liveByPlatformId);
+
+  // Heal accounts wrongly soft-deleted while in a transient state (e.g. an
+  // UpgradePending account that was briefly absent from the sweep).
+  await reconcileRestoredAccounts(liveByPlatformId);
 
   // Per-account breach/transition sync only applies to still-active accounts.
   const activeAccounts = localAccounts.filter(
