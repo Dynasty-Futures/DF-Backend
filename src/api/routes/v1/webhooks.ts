@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { config } from '../../../config/index.js';
 import { logger } from '../../../utils/logger.js';
 import * as accountDiscoveryService from '../../../services/account-discovery.service.js';
+import * as affiliateService from '../../../services/affiliate.service.js';
 
 // =============================================================================
 // Inbound Webhook Routes (YPF)
@@ -68,13 +69,29 @@ router.post('/ypf', (req: Request, res: Response): void => {
     return;
   }
 
-  // Body is logged for observability only — never used as the source of truth.
-  // YPF's event identifier field name isn't contractually fixed, so log the
-  // first of the likely keys (e.g. AccountCreated).
+  // YPF's event identifier is `webhookType` (e.g. "AccountCreated",
+  // "AffiliatePartnerApproved"); fall back to other likely keys defensively.
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const eventName =
-    body['event'] ?? body['type'] ?? body['eventType'] ?? body['name'];
+  const eventName = (body['webhookType'] ??
+    body['event'] ??
+    body['type'] ??
+    body['eventType'] ??
+    body['name']) as string | undefined;
   logger.info({ event: eventName, ip: req.ip }, 'ypf-webhook: received event');
+
+  // Affiliate events carry their state in the body and can't be re-fetched (the
+  // affiliate read API needs a service token we don't have yet), so the handler
+  // updates local state from the payload. The endpoint is secret-gated, so
+  // trusting the body here is acceptable. No discovery sweep for these.
+  if (typeof eventName === 'string' && eventName.startsWith('Affiliate')) {
+    void affiliateService
+      .handleAffiliateWebhookEvent(eventName, body)
+      .catch((err) =>
+        logger.error({ err, eventName }, 'ypf-webhook: affiliate handler failed'),
+      );
+    res.status(202).json({ success: true, handled: 'affiliate' });
+    return;
+  }
 
   // Master switch: when discovery is disabled the poll is off too, so don't let
   // the webhook create accounts out-of-band. Ack so YPF doesn't retry.

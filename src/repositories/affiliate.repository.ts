@@ -1,4 +1,4 @@
-import { AffiliateApplication } from '@prisma/client';
+import { AffiliateApplication, AffiliateApplicationStatus, Prisma } from '@prisma/client';
 import { prisma } from '../utils/database.js';
 
 // =============================================================================
@@ -56,17 +56,41 @@ export const createAffiliateApplication = async (
 };
 
 /**
- * Record the affiliate-platform registration outcome on an application.
+ * Record the affiliate-platform registration/approval outcome on an application.
  */
 export const updateApplicationPlatformResult = async (
   id: string,
-  data: { platformPartnerId?: string | undefined; platformStatus?: string | undefined }
+  data: {
+    platformPartnerId?: string | undefined;
+    platformStatus?: string | undefined;
+    status?: AffiliateApplicationStatus | undefined;
+  }
 ): Promise<void> => {
   await prisma.affiliateApplication.update({
     where: { id },
     data: {
       ...(data.platformPartnerId && { platformPartnerId: data.platformPartnerId }),
       ...(data.platformStatus && { platformStatus: data.platformStatus }),
+      ...(data.status && { status: data.status }),
     },
+  });
+};
+
+/**
+ * Find the application a webhook refers to, by its affiliate-platform partner id
+ * or by the DF user id (externalId). Most recent first.
+ */
+export const findApplicationForWebhook = async (keys: {
+  platformPartnerId?: string | undefined;
+  creatorId?: string | undefined;
+}): Promise<AffiliateApplication | null> => {
+  const or: Prisma.AffiliateApplicationWhereInput[] = [];
+  if (keys.platformPartnerId) or.push({ platformPartnerId: keys.platformPartnerId });
+  if (keys.creatorId) or.push({ creatorId: keys.creatorId });
+  if (or.length === 0) return null;
+
+  return prisma.affiliateApplication.findFirst({
+    where: { OR: or },
+    orderBy: { createdAt: 'desc' },
   });
 };

@@ -1,11 +1,12 @@
 import crypto from 'crypto';
-import { AffiliateApplication } from '@prisma/client';
+import { AffiliateApplication, AffiliateApplicationStatus } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { ValidationError } from '../utils/errors.js';
 import { sendAffiliateApplicationNotification } from './email.service.js';
 import {
   createAffiliateApplication,
   updateApplicationPlatformResult,
+  findApplicationForWebhook,
   CreateAffiliateApplicationData,
 } from '../repositories/affiliate.repository.js';
 import { getUserById } from '../repositories/user.repository.js';
@@ -207,5 +208,79 @@ const registerOnAffiliatePlatform = async (
   logger.info(
     { applicationId: application.id, partnerId: result.partnerId, status: result.status },
     'affiliate-platform: partner registered'
+  );
+};
+
+// Pull a string from a (possibly dot-nested) key on the webhook payload.
+const pick = (
+  obj: Record<string, unknown>,
+  paths: string[]
+): string | undefined => {
+  for (const path of paths) {
+    let cur: unknown = obj;
+    for (const seg of path.split('.')) {
+      cur = (cur as Record<string, unknown> | undefined)?.[seg];
+    }
+    if (typeof cur === 'string' && cur.trim()) return cur;
+  }
+  return undefined;
+};
+
+/**
+ * Handle an affiliate webhook event from YPF (AffiliatePartnerApproved/Rejected,
+ * etc.). The affiliate read API needs a service token we don't have yet, so we
+ * can't re-fetch — local state is updated from the payload (the webhook endpoint
+ * is secret-gated, so trusting the body is acceptable). The full payload is
+ * logged so the first real event reveals the currently-undocumented contract.
+ */
+export const handleAffiliateWebhookEvent = async (
+  eventType: string,
+  payload: Record<string, unknown>
+): Promise<void> => {
+  logger.info({ eventType, payload }, 'affiliate-webhook: received event');
+
+  const status =
+    eventType === 'AffiliatePartnerApproved'
+      ? AffiliateApplicationStatus.APPROVED
+      : eventType === 'AffiliatePartnerRejected'
+        ? AffiliateApplicationStatus.REJECTED
+        : undefined;
+
+  // Coupon / payout / registered events are logged only for now — wired once we
+  // have the payload contract + the service token.
+  if (!status) {
+    return;
+  }
+
+  const platformPartnerId = pick(payload, ['partnerId', 'partner.id', 'id']);
+  // YPF's affiliate payloads carry the DF user id (set as externalId at register
+  // time) under `partnerExternalId`; the other keys are defensive fallbacks.
+  const externalId = pick(payload, [
+    'partnerExternalId',
+    'externalId',
+    'partner.externalId',
+    'user.externalId',
+  ]);
+
+  const application = await findApplicationForWebhook({
+    platformPartnerId,
+    creatorId: externalId,
+  });
+  if (!application) {
+    logger.warn(
+      { eventType, platformPartnerId, externalId },
+      'affiliate-webhook: no matching local application'
+    );
+    return;
+  }
+
+  await updateApplicationPlatformResult(application.id, {
+    status,
+    platformStatus: eventType,
+    platformPartnerId,
+  });
+  logger.info(
+    { applicationId: application.id, status },
+    'affiliate-webhook: application status updated'
   );
 };
