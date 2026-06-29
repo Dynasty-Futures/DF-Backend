@@ -46,6 +46,9 @@ enum AccountStatus {
   SUSPENDED
   FAILED
   CLOSED
+  // Retired after passing: YPF spawned a new funded account and marked this one
+  // `Upgraded`. Shown under "Inactive Accounts" (distinct from closed/violated).
+  UPGRADED
 }
 
 enum ChallengePhase {

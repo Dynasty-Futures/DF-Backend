@@ -92,6 +92,63 @@ export const failChallenge = async (
   );
 };
 
+// ── Close Upgraded Account ──────────────────────────────────────────────────
+// In YPF's model, passing the evaluation does NOT fund the account in place — a
+// NEW account is created on the funded program and this one is retired with an
+// `Upgraded` state. The new funded account is picked up separately by discovery
+// / the poller, so we mark this retired row `UPGRADED` (NOT soft-deleted —
+// deletedAt stays null) so it drops out of the active section and shows under
+// "Inactive Accounts" labelled "Upgraded" (distinct from closed/violated). The
+// evaluation genuinely passed, so its challenge is marked PASSED. Idempotent.
+
+export const closeUpgradedAccount = async (accountId: string): Promise<void> => {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    include: {
+      challenges: {
+        where: { status: ChallengeStatus.ACTIVE },
+        take: 1,
+      },
+    },
+  });
+
+  if (!account) {
+    logger.warn({ accountId }, 'closeUpgradedAccount: account not found');
+    return;
+  }
+
+  if (account.status === AccountStatus.UPGRADED) {
+    logger.debug({ accountId }, 'closeUpgradedAccount: already upgraded — skipping');
+    return;
+  }
+
+  const activeChallenge = account.challenges[0];
+
+  logger.info(
+    { accountId, challengeId: activeChallenge?.id },
+    'Marking account UPGRADED — superseded by a new funded account on YPF',
+  );
+
+  await prisma.$transaction(async (tx) => {
+    if (activeChallenge) {
+      await tx.challenge.update({
+        where: { id: activeChallenge.id },
+        data: {
+          status: ChallengeStatus.PASSED,
+          completedAt: new Date(),
+        },
+      });
+    }
+
+    await tx.account.update({
+      where: { id: accountId },
+      data: { status: AccountStatus.UPGRADED },
+    });
+  });
+
+  logger.info({ accountId }, 'Account marked UPGRADED and moved to inactive');
+};
+
 // ── Reactivate Challenge ────────────────────────────────────────────────────
 // YPF staff can reactivate a breached account on the CRM
 // (AccountBreachedReactivated) — the account returns to Active upstream. We

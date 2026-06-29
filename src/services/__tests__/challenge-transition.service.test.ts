@@ -9,6 +9,7 @@ import {
   failChallenge,
   advanceChallenge,
   reactivateChallenge,
+  closeUpgradedAccount,
 } from '../challenge-transition.service';
 
 // =============================================================================
@@ -294,6 +295,65 @@ describe('reactivateChallenge', () => {
   it('skips when there is no challenge to reopen', async () => {
     mockAccountFindUnique.mockResolvedValue({ ...failedAccount, challenges: [] });
     await reactivateChallenge('acc-1');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// closeUpgradedAccount
+// =============================================================================
+
+describe('closeUpgradedAccount', () => {
+  const upgradedAccount = {
+    id: 'acc-1',
+    status: AccountStatus.FUNDED,
+    challenges: [
+      { id: 'ch-1', status: ChallengeStatus.ACTIVE, phase: ChallengePhase.FUNDED },
+    ],
+  };
+
+  it('marks the account UPGRADED (not soft-deleted) and passes its challenge', async () => {
+    mockAccountFindUnique.mockResolvedValue(upgradedAccount);
+
+    await closeUpgradedAccount('acc-1');
+
+    expect(mockChallengeUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ch-1' },
+        data: expect.objectContaining({ status: ChallengeStatus.PASSED }),
+      }),
+    );
+
+    const accountArg = mockAccountUpdate.mock.calls[0][0];
+    expect(accountArg.where).toEqual({ id: 'acc-1' });
+    expect(accountArg.data.status).toBe(AccountStatus.UPGRADED);
+    // NOT soft-deleted — it must stay visible in the Inactive section.
+    expect(accountArg.data.deletedAt).toBeUndefined();
+  });
+
+  it('marks an account with no active challenge UPGRADED (just sets status)', async () => {
+    mockAccountFindUnique.mockResolvedValue({ ...upgradedAccount, challenges: [] });
+
+    await closeUpgradedAccount('acc-1');
+
+    expect(mockChallengeUpdate).not.toHaveBeenCalled();
+    expect(mockAccountUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: AccountStatus.UPGRADED }) }),
+    );
+  });
+
+  it('skips when already upgraded (idempotent)', async () => {
+    mockAccountFindUnique.mockResolvedValue({
+      ...upgradedAccount,
+      status: AccountStatus.UPGRADED,
+    });
+    await closeUpgradedAccount('acc-1');
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('skips when account not found', async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+    await closeUpgradedAccount('acc-missing');
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

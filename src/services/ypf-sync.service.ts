@@ -81,6 +81,7 @@ export const softDeleteRemovedAccount = async (
 const TERMINAL_STATUSES = new Set<AccountStatus>([
   AccountStatus.FAILED,
   AccountStatus.CLOSED,
+  AccountStatus.UPGRADED,
 ]);
 
 interface SyncInput {
@@ -167,20 +168,25 @@ export const syncAccountFromYPF = async ({
 
   const isBreached = YPF_BREACHED.includes(upstreamState);
 
-  // The account passed if it's now on a funded (terminal) program but we still
-  // have it as non-funded locally. This also self-corrects rows created while
-  // the funded program was mis-detected. Fall back to the (never-emitted) state
-  // strings for safety.
+  // YPF's upgrade model: passing the evaluation does NOT fund the account in
+  // place. YPF spawns a NEW account on the funded program and marks THIS one
+  // `Upgraded`. The new funded account is discovered separately, so the retired
+  // `Upgraded` account is CLOSED locally (→ inactive section) — advancing it to
+  // FUNDED would double-count the funded account.
+  const isSuperseded = YPF_UPGRADED.includes(upstreamState);
+
+  // Safety net for an in-place funding flip: the account's OWN program became
+  // terminal/funded while we still hold it as non-funded. (Not how YPF behaves
+  // today — it spawns a new account — but keep it so a future in-place flip, or
+  // a row created while the funded program was mis-detected, still advances.)
   const fundedProgramIds = await loadFundedProgramIds(provider).catch(
     () => new Set<string>(),
   );
   const liveProgramIsFunded =
     !!live.programId && fundedProgramIds.has(live.programId);
-  const isUpgrade =
+  const isInPlaceFunded =
     account.status !== AccountStatus.FUNDED &&
-    (liveProgramIsFunded ||
-      YPF_UPGRADED.includes(upstreamState) ||
-      YPF_FUNDED.includes(upstreamState));
+    (liveProgramIsFunded || YPF_FUNDED.includes(upstreamState));
 
   if (isBreached) {
     const breaches =
@@ -198,7 +204,14 @@ export const syncAccountFromYPF = async ({
     return;
   }
 
-  if (isUpgrade) {
+  // Check superseded BEFORE in-place funding: an `Upgraded` account is always
+  // retired in favour of a freshly-spawned funded account, whatever its program.
+  if (isSuperseded) {
+    await challengeTransitionService.closeUpgradedAccount(localAccountId);
+    return;
+  }
+
+  if (isInPlaceFunded) {
     await challengeTransitionService.advanceChallenge(localAccountId);
     return;
   }

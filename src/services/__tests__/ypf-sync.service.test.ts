@@ -39,9 +39,11 @@ jest.mock('../sync.service', () => ({
 
 const mockFailChallenge = jest.fn();
 const mockAdvanceChallenge = jest.fn();
+const mockCloseUpgradedAccount = jest.fn();
 jest.mock('../challenge-transition.service', () => ({
   failChallenge: (...a: unknown[]) => mockFailChallenge(...a),
   advanceChallenge: (...a: unknown[]) => mockAdvanceChallenge(...a),
+  closeUpgradedAccount: (...a: unknown[]) => mockCloseUpgradedAccount(...a),
 }));
 
 jest.mock('../../utils/logger', () => ({
@@ -147,6 +149,36 @@ describe('syncAccountFromYPF — eval→funded transition', () => {
       liveAccount: { status: 'Active', programId: 'prog-funded' } as never,
     });
 
+    expect(mockAdvanceChallenge).not.toHaveBeenCalled();
+  });
+});
+
+describe('syncAccountFromYPF — superseded (Upgraded) handling', () => {
+  it('closes an Upgraded account instead of advancing it (YPF spawned a new funded account)', async () => {
+    mockAccountFindUnique.mockResolvedValue(
+      linkedAccount(AccountStatus.EVALUATION),
+    );
+
+    await syncAccountFromYPF({
+      localAccountId: 'acc-1',
+      // Retired account keeps its eval program; the new funded account is separate.
+      liveAccount: { status: 'Upgraded', programId: 'prog-eval' } as never,
+    });
+
+    expect(mockCloseUpgradedAccount).toHaveBeenCalledWith('acc-1');
+    expect(mockAdvanceChallenge).not.toHaveBeenCalled();
+    expect(mockFailChallenge).not.toHaveBeenCalled();
+  });
+
+  it('still closes an Upgraded account that was already advanced to FUNDED locally (self-heal)', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount(AccountStatus.FUNDED));
+
+    await syncAccountFromYPF({
+      localAccountId: 'acc-1',
+      liveAccount: { status: 'Upgraded', programId: 'prog-eval' } as never,
+    });
+
+    expect(mockCloseUpgradedAccount).toHaveBeenCalledWith('acc-1');
     expect(mockAdvanceChallenge).not.toHaveBeenCalled();
   });
 });
