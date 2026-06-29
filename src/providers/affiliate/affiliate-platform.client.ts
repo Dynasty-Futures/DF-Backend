@@ -185,3 +185,108 @@ export const fetchPartnerDashboard = async (
     return null;
   }
 };
+
+/** Minimal reference to an affiliate-platform partner, resolved by email. */
+export interface AffiliatePartnerRef {
+  id: string;
+  email: string;
+  refCode: string | null;
+  /** Platform status: ACTIVE | PENDING_APPROVAL | REJECTED | SUSPENDED | … */
+  status: string;
+  createdAt: string | null;
+}
+
+/**
+ * Resolve a partner by email via the admin partner search. Used to recognise
+ * affiliates who were onboarded directly in the affiliate CRM (so they have no
+ * DF application and a null externalId) — the DF user's email is the only stable
+ * linkage. Returns the EXACT (case-insensitive) email match, or null. Best-effort:
+ * returns null when the service token is absent or the lookup fails.
+ */
+export const findPartnerByEmail = async (
+  email: string,
+): Promise<AffiliatePartnerRef | null> => {
+  if (!isAffiliateDashboardEnabled()) return null;
+
+  const base = config.affiliate.apiUrl.replace(/\/+$/, '');
+  const url = `${base}/api/v1/partners?search=${encodeURIComponent(email)}&size=10`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'X-Service-Token': config.affiliate.serviceToken as string,
+        'X-Tenant-ID': config.affiliate.tenantId,
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`/partners search -> HTTP ${res.status}`);
+
+    const body = (await res.json()) as { data?: unknown };
+    const list = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
+    const match = list.find(
+      (p) =>
+        typeof p['email'] === 'string' &&
+        (p['email'] as string).toLowerCase() === email.toLowerCase(),
+    );
+    if (!match || typeof match['id'] !== 'string') return null;
+
+    return {
+      id: match['id'],
+      email: match['email'] as string,
+      refCode: (match['refCode'] as string | undefined) ?? null,
+      status: String(match['status'] ?? ''),
+      createdAt: (match['createdAt'] as string | undefined) ?? null,
+    };
+  } catch (err) {
+    logger.warn({ err, email }, 'affiliate-platform: partner email lookup failed');
+    return null;
+  }
+};
+
+/** A partner's discount coupons, read live from the platform. */
+export interface PartnerCoupon {
+  code: string;
+  discountType: string | null;
+  discountValue: number;
+  status: string;
+}
+
+/**
+ * Read a partner's coupons by impersonation. Best-effort: returns [] when the
+ * token is absent or the call fails. Used to surface coupons for partners with
+ * no locally-mirrored coupon webhooks (e.g. CRM-onboarded affiliates).
+ */
+export const fetchPartnerCoupons = async (
+  platformPartnerId: string,
+): Promise<PartnerCoupon[]> => {
+  if (!isAffiliateDashboardEnabled()) return [];
+
+  const base = config.affiliate.apiUrl.replace(/\/+$/, '');
+  try {
+    const res = await fetch(`${base}/api/v1/partners/me/coupons`, {
+      headers: {
+        Accept: 'application/json',
+        'X-Service-Token': config.affiliate.serviceToken as string,
+        'X-Tenant-ID': config.affiliate.tenantId,
+        'X-Impersonate-User-Id': platformPartnerId,
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`/partners/me/coupons -> HTTP ${res.status}`);
+
+    const body = (await res.json()) as { data?: unknown };
+    const list = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
+    return list
+      .filter((c) => typeof c['code'] === 'string')
+      .map((c) => ({
+        code: c['code'] as string,
+        discountType: (c['discountType'] as string | undefined) ?? null,
+        discountValue: num(c['discountValue']),
+        status: String(c['status'] ?? ''),
+      }));
+  } catch (err) {
+    logger.warn({ err, platformPartnerId }, 'affiliate-platform: coupon fetch failed');
+    return [];
+  }
+};

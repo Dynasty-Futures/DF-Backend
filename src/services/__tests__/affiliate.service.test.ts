@@ -22,6 +22,8 @@ const mockGetUserById = jest.fn();
 const mockIsRegEnabled = jest.fn();
 const mockRegisterPartner = jest.fn();
 const mockFetchPartnerDashboard = jest.fn();
+const mockFindPartnerByEmail = jest.fn();
+const mockFetchPartnerCoupons = jest.fn();
 
 jest.mock('../../repositories/affiliate.repository', () => ({
   createAffiliateApplication: (...args: unknown[]) => mockCreateAffiliateApplication(...args),
@@ -42,6 +44,8 @@ jest.mock('../../providers/affiliate/affiliate-platform.client', () => ({
   isAffiliateRegistrationEnabled: () => mockIsRegEnabled(),
   registerPartner: (...args: unknown[]) => mockRegisterPartner(...args),
   fetchPartnerDashboard: (...args: unknown[]) => mockFetchPartnerDashboard(...args),
+  findPartnerByEmail: (...args: unknown[]) => mockFindPartnerByEmail(...args),
+  fetchPartnerCoupons: (...args: unknown[]) => mockFetchPartnerCoupons(...args),
 }));
 
 jest.mock('../email.service', () => ({
@@ -402,9 +406,12 @@ describe('getMyAffiliateStatus', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchPartnerDashboard.mockResolvedValue(null);
+    mockFindPartnerByEmail.mockResolvedValue(null);
+    mockFetchPartnerCoupons.mockResolvedValue([]);
+    mockGetUserById.mockResolvedValue({ id: 'user-1', email: 'trader@example.com' });
   });
 
-  it('returns a not-applied shell when there is no application', async () => {
+  it('returns a not-applied shell when there is no application and no platform partner', async () => {
     mockFindLatestApplicationByCreator.mockResolvedValue(null);
     mockFindCouponsByCreator.mockResolvedValue([]);
 
@@ -420,8 +427,78 @@ describe('getMyAffiliateStatus', () => {
       coupons: [],
       analytics: null,
     });
-    // No linked partner id → never hits the affiliate platform.
+    // Looked the user up by email, found no partner → no dashboard fetch.
+    expect(mockFindPartnerByEmail).toHaveBeenCalledWith('trader@example.com');
     expect(mockFetchPartnerDashboard).not.toHaveBeenCalled();
+  });
+
+  it('recognizes a CRM-onboarded partner by email when there is no local application', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue(null);
+    mockFindCouponsByCreator.mockResolvedValue([]);
+    mockFindPartnerByEmail.mockResolvedValue({
+      id: '29db0653-cc90-4169-810a-6e7b8b3c4162',
+      email: 'trader@example.com',
+      refCode: 'NQPROFITS23',
+      status: 'ACTIVE',
+      createdAt: '2026-05-01T00:00:00.000Z',
+    });
+    const dashboard = { tierName: 'Community Affiliate', commissionRate: 10, totalRevenue: 0 };
+    mockFetchPartnerDashboard.mockResolvedValue(dashboard);
+    mockFetchPartnerCoupons.mockResolvedValue([
+      { code: 'NQPROFITS23', discountType: 'percent', discountValue: 15, status: 'ACTIVE' },
+    ]);
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    expect(mockFindPartnerByEmail).toHaveBeenCalledWith('trader@example.com');
+    // Dashboard + coupons resolved against the platform partner UUID.
+    expect(mockFetchPartnerDashboard).toHaveBeenCalledWith('29db0653-cc90-4169-810a-6e7b8b3c4162');
+    expect(mockFetchPartnerCoupons).toHaveBeenCalledWith('29db0653-cc90-4169-810a-6e7b8b3c4162');
+    expect(result.hasApplied).toBe(true);
+    expect(result.isApproved).toBe(true); // ACTIVE → APPROVED
+    expect(result.status).toBe(AffiliateApplicationStatus.APPROVED);
+    expect(result.referralCode).toBe('NQPROFITS23');
+    expect(result.preferredCode).toBe('NQPROFITS23');
+    expect(result.analytics).toEqual(dashboard);
+    expect(result.coupons[0]).toMatchObject({
+      code: 'NQPROFITS23',
+      status: AffiliateCouponStatus.APPROVED,
+    });
+  });
+
+  it('treats a PENDING_APPROVAL platform partner as not yet approved', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue(null);
+    mockFindCouponsByCreator.mockResolvedValue([]);
+    mockFindPartnerByEmail.mockResolvedValue({
+      id: 'p-uuid',
+      email: 'trader@example.com',
+      refCode: null,
+      status: 'PENDING_APPROVAL',
+      createdAt: null,
+    });
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    expect(result.hasApplied).toBe(true);
+    expect(result.isApproved).toBe(false);
+    expect(result.status).toBe(AffiliateApplicationStatus.PENDING);
+  });
+
+  it('does not email-match when a local application is already linked', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue({
+      status: AffiliateApplicationStatus.APPROVED,
+      preferredAffiliateCode: 'GOAT15',
+      referralCode: 'REF123',
+      platformPartnerId: 'partner-uuid-1',
+      createdAt: new Date('2026-06-28T00:00:00.000Z'),
+    });
+    mockFindCouponsByCreator.mockResolvedValue([]);
+
+    await getMyAffiliateStatus('user-1');
+
+    // Already linked locally → skip the email lookup entirely.
+    expect(mockFindPartnerByEmail).not.toHaveBeenCalled();
+    expect(mockFetchPartnerDashboard).toHaveBeenCalledWith('partner-uuid-1');
   });
 
   it('reports approval + referral code + coupons for an approved affiliate', async () => {
