@@ -21,7 +21,10 @@ import {
   isAffiliateRegistrationEnabled,
   registerPartner,
   fetchPartnerDashboard,
+  findPartnerByEmail,
+  fetchPartnerCoupons,
   PartnerDashboard,
+  AffiliatePartnerRef,
 } from '../providers/affiliate/affiliate-platform.client.js';
 
 // =============================================================================
@@ -376,32 +379,78 @@ export interface MyAffiliateStatus {
  * affiliate-platform service token, so they are intentionally absent here and
  * rendered as "syncing" on the client.
  */
+// Map an affiliate-platform partner status onto our local application status.
+const mapPlatformPartnerStatus = (status: string): AffiliateApplicationStatus => {
+  const s = status.toUpperCase();
+  if (s === 'ACTIVE' || s === 'APPROVED') return AffiliateApplicationStatus.APPROVED;
+  if (s.includes('REJECT')) return AffiliateApplicationStatus.REJECTED;
+  return AffiliateApplicationStatus.PENDING; // PENDING_APPROVAL, SUSPENDED, …
+};
+
 export const getMyAffiliateStatus = async (userId: string): Promise<MyAffiliateStatus> => {
-  const [application, coupons] = await Promise.all([
+  const [application, localCoupons] = await Promise.all([
     findLatestApplicationByCreator(userId),
     findCouponsByCreator(userId),
   ]);
 
-  // Live earnings/analytics require both the service token (checked inside
-  // fetchPartnerDashboard) and a linked affiliate-platform partner id. Fetch is
-  // best-effort: any failure resolves to null and the UI falls back gracefully.
-  const analytics = application?.platformPartnerId
-    ? await fetchPartnerDashboard(application.platformPartnerId)
-    : null;
+  // Resolve the affiliate-platform partner. Prefer the locally-stored link
+  // (from the DF application / webhook); otherwise fall back to an email match
+  // so partners onboarded directly in the affiliate CRM — who have no DF
+  // application and a null externalId — are still recognised as affiliates.
+  let partner: AffiliatePartnerRef | null = null;
+  let partnerId = application?.platformPartnerId ?? null;
+  if (!partnerId) {
+    const user = await getUserById(userId);
+    if (user?.email) {
+      partner = await findPartnerByEmail(user.email);
+      partnerId = partner?.id ?? null;
+    }
+  }
 
-  return {
-    hasApplied: Boolean(application),
-    status: application?.status ?? null,
-    isApproved: application?.status === AffiliateApplicationStatus.APPROVED,
-    preferredCode: application?.preferredAffiliateCode ?? null,
-    referralCode: application?.referralCode ?? null,
-    appliedAt: application?.createdAt.toISOString() ?? null,
-    coupons: coupons.map((c) => ({
+  // Live earnings/analytics — best-effort: any failure resolves to null and the
+  // UI falls back to the "syncing" placeholders.
+  const analytics = partnerId ? await fetchPartnerDashboard(partnerId) : null;
+
+  // Coupons: locally-mirrored (webhook) when present; otherwise, for a partner
+  // resolved directly from the platform, pull their coupons live.
+  let coupons: AffiliateCouponView[] = localCoupons.map((c) => ({
+    code: c.code,
+    discountType: c.discountType,
+    discountValue: c.discountValue,
+    status: c.status,
+  }));
+  if (coupons.length === 0 && partner && partnerId) {
+    const platformCoupons = await fetchPartnerCoupons(partnerId);
+    coupons = platformCoupons.map((c) => ({
       code: c.code,
       discountType: c.discountType,
       discountValue: c.discountValue,
-      status: c.status,
-    })),
+      status: mapPlatformCouponStatus(c.status),
+    }));
+  }
+
+  // Status / referral: the local application is authoritative when present;
+  // otherwise fall back to the platform partner (CRM-onboarded affiliate).
+  const status = application?.status ?? (partner ? mapPlatformPartnerStatus(partner.status) : null);
+  const referralCode = application?.referralCode ?? partner?.refCode ?? null;
+  const preferredCode = application?.preferredAffiliateCode ?? partner?.refCode ?? null;
+
+  return {
+    hasApplied: Boolean(application) || Boolean(partner),
+    status,
+    isApproved: status === AffiliateApplicationStatus.APPROVED,
+    preferredCode,
+    referralCode,
+    appliedAt: application?.createdAt.toISOString() ?? partner?.createdAt ?? null,
+    coupons,
     analytics,
   };
+};
+
+// Map an affiliate-platform coupon status onto our local coupon status enum.
+const mapPlatformCouponStatus = (status: string): AffiliateCouponStatus => {
+  const s = status.toUpperCase();
+  if (s === 'ACTIVE' || s === 'APPROVED') return AffiliateCouponStatus.APPROVED;
+  if (s.includes('REJECT')) return AffiliateCouponStatus.REJECTED;
+  return AffiliateCouponStatus.CREATED;
 };
