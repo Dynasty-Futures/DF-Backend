@@ -263,6 +263,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "YPF_API_URL", valueFrom = var.ypf_api_url_arn },
         { name = "YPF_CLIENT_KEY", valueFrom = var.ypf_client_key_arn },
         { name = "YPF_WEBHOOK_SECRET", valueFrom = var.ypf_webhook_secret_arn },
+        { name = "AFFILIATE_SERVICE_TOKEN", valueFrom = var.affiliate_service_token_arn },
       ]
 
       # Health check

@@ -62,6 +62,11 @@ output "ypf_webhook_secret_arn" {
   value       = data.aws_secretsmanager_secret.ypf_webhook_secret.arn
 }
 
+output "affiliate_service_token_arn" {
+  description = "ARN of the AFFILIATE_SERVICE_TOKEN secret (managed out-of-band)"
+  value       = data.aws_secretsmanager_secret.affiliate_service_token.arn
+}
+
 output "all_secret_arns" {
   description = "List of all secret ARNs (for IAM policies)"
   value = [
@@ -77,5 +82,6 @@ output "all_secret_arns" {
     data.aws_secretsmanager_secret.ypf_api_url.arn,
     data.aws_secretsmanager_secret.ypf_client_key.arn,
     data.aws_secretsmanager_secret.ypf_webhook_secret.arn,
+    data.aws_secretsmanager_secret.affiliate_service_token.arn,
   ]
 }

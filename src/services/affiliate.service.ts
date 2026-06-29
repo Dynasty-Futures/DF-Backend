@@ -20,6 +20,8 @@ import { getUserById } from '../repositories/user.repository.js';
 import {
   isAffiliateRegistrationEnabled,
   registerPartner,
+  fetchPartnerDashboard,
+  PartnerDashboard,
 } from '../providers/affiliate/affiliate-platform.client.js';
 
 // =============================================================================
@@ -360,6 +362,12 @@ export interface MyAffiliateStatus {
   referralCode: string | null;
   appliedAt: string | null;
   coupons: AffiliateCouponView[];
+  /**
+   * Live earnings / analytics from the affiliate platform, when the service
+   * token is configured and the partner is linked. `null` otherwise — the UI
+   * then shows the "syncing" placeholders instead of zeros it can't trust.
+   */
+  analytics: PartnerDashboard | null;
 }
 
 /**
@@ -374,6 +382,13 @@ export const getMyAffiliateStatus = async (userId: string): Promise<MyAffiliateS
     findCouponsByCreator(userId),
   ]);
 
+  // Live earnings/analytics require both the service token (checked inside
+  // fetchPartnerDashboard) and a linked affiliate-platform partner id. Fetch is
+  // best-effort: any failure resolves to null and the UI falls back gracefully.
+  const analytics = application?.platformPartnerId
+    ? await fetchPartnerDashboard(application.platformPartnerId)
+    : null;
+
   return {
     hasApplied: Boolean(application),
     status: application?.status ?? null,
@@ -387,5 +402,6 @@ export const getMyAffiliateStatus = async (userId: string): Promise<MyAffiliateS
       discountValue: c.discountValue,
       status: c.status,
     })),
+    analytics,
   };
 };
