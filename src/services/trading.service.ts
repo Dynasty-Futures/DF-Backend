@@ -367,10 +367,10 @@ export const getDashboardUrl = async (userId: string) => {
 
   // The "Launch Platform" button sends the trader to the hosted Volumetrica
   // portal, where they self-authenticate with the email + per-account password
-  // surfaced on their dashboard. We deliberately do NOT mint an SSO token here:
-  // our Propsite key authenticates to the wrong Volumetrica org for
-  // YPF-provisioned traders ("User not found"), so token minting is dead. The
-  // static portal login URL is the working path.
+  // surfaced on their dashboard. This is a deliberate "open in a new tab"
+  // fallback; the seamless token-minted experience lives in the in-app Trade
+  // embed (see getIFrameUrl, which mints a webApp jtoken). We intentionally do
+  // NOT mint a token here so this path never depends on the Volumetrica API.
   return { url: config.volumetrica.portalUrl };
 };
 
