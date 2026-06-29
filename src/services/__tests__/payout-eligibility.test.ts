@@ -228,6 +228,34 @@ describe('evaluatePayoutEligibility', () => {
       expect(result.amountErrors.some((e) => /Minimum payout/i.test(e))).toBe(true);
     });
 
+    it('applies the DF plan minimum when YPF has none', () => {
+      const result = evaluatePayoutEligibility(baseInput({ planMinPayout: 250 }));
+      expect(result.minAmount).toBe(250);
+    });
+
+    it('uses the HIGHER (more restrictive) of the DF and YPF minimums', () => {
+      const ypfHigher = evaluatePayoutEligibility(
+        baseInput({ planMinPayout: 250, rules: { minWithdrawalAmount: 500 } }),
+      );
+      expect(ypfHigher.minAmount).toBe(500);
+      const dfHigher = evaluatePayoutEligibility(
+        baseInput({ planMinPayout: 250, rules: { minWithdrawalAmount: 100 } }),
+      );
+      expect(dfHigher.minAmount).toBe(250);
+    });
+
+    it('rejects an amount below the DF plan minimum', () => {
+      const result = evaluatePayoutEligibility(
+        baseInput({ requestedAmount: 200, planMinPayout: 250 }),
+      );
+      expect(result.amountErrors.some((e) => /Minimum payout/i.test(e))).toBe(true);
+    });
+
+    it('ignores a plan minimum of 0 / undefined (fail-permissive)', () => {
+      expect(evaluatePayoutEligibility(baseInput({ planMinPayout: 0 })).minAmount).toBe(0);
+      expect(evaluatePayoutEligibility(baseInput()).minAmount).toBe(0);
+    });
+
     it('rejects an amount above the profit cap', () => {
       const result = evaluatePayoutEligibility(
         baseInput({ requestedAmount: 9_000, rules: { maxWithdrawalAmount: 8_000 } }),
