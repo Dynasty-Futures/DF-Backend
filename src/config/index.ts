@@ -77,6 +77,10 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+  // Service token (M2M) for reading partner dashboard data via impersonation
+  // (X-Service-Token + X-Impersonate-User-Id). Unset = dashboard analytics are
+  // omitted and the UI falls back to webhook-mirrored status only.
+  AFFILIATE_SERVICE_TOKEN: z.string().optional(),
 
   // Volumetrica (kept ONLY for trader-dashboard SSO; not the management API)
   VOLUMETRICA_API_URL: z.string().url().optional(),
@@ -189,6 +193,7 @@ export const config = {
     apiUrl: env.AFFILIATE_API_URL,
     tenantId: env.AFFILIATE_TENANT_ID,
     registrationEnabled: env.AFFILIATE_REGISTRATION_ENABLED,
+    serviceToken: env.AFFILIATE_SERVICE_TOKEN,
   },
   volumetrica: {
     apiUrl: env.VOLUMETRICA_API_URL,

@@ -82,3 +82,106 @@ export const registerPartner = async (
     alreadyExists: false,
   };
 };
+
+// =============================================================================
+// Phase 2 — partner dashboard reads (service token + impersonation)
+// =============================================================================
+
+/** Flattened, UI-ready partner dashboard figures. */
+export interface PartnerDashboard {
+  tierName: string | null;
+  /** Commission rate as a percentage (e.g. 10 for 10%). */
+  commissionRate: number | null;
+  totalRevenue: number;
+  totalCommissions: number;
+  paidCommissions: number;
+  pendingCommissions: number;
+  availablePayoutAmount: number;
+  payoutOnHoldAmount: number;
+  totalOrders: number;
+  /** Paid (converted) orders, from the analytics order breakdown. */
+  paidOrders: number;
+  totalReferralClicks: number;
+  totalReferralClicksLast30Days: number;
+  /** Direct sign-ups referred by this partner. */
+  directReferrals: number;
+}
+
+/** Whether partner dashboard reads are configured (service token present). */
+export const isAffiliateDashboardEnabled = (): boolean =>
+  Boolean(config.affiliate.serviceToken && config.affiliate.tenantId);
+
+const num = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0;
+
+/**
+ * Read a partner's dashboard figures by impersonating them with the service
+ * token. Impersonation MUST use the affiliate-platform partner UUID (the DF
+ * externalId is not resolvable for impersonation). Best-effort: returns `null`
+ * if the token is missing or any required call fails, so the dashboard falls
+ * back to webhook-mirrored status without erroring.
+ */
+export const fetchPartnerDashboard = async (
+  platformPartnerId: string,
+): Promise<PartnerDashboard | null> => {
+  if (!isAffiliateDashboardEnabled()) return null;
+
+  const base = config.affiliate.apiUrl.replace(/\/+$/, '');
+  const headers = {
+    Accept: 'application/json',
+    'X-Service-Token': config.affiliate.serviceToken as string,
+    'X-Tenant-ID': config.affiliate.tenantId,
+    'X-Impersonate-User-Id': platformPartnerId,
+  };
+
+  const get = async (path: string): Promise<Record<string, unknown>> => {
+    const res = await fetch(`${base}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`${path} -> HTTP ${res.status}`);
+    return (await res.json()) as Record<string, unknown>;
+  };
+
+  try {
+    // Analytics is the richest source and is required; stats + profile are
+    // best-effort enrichments (paid/pending split, sign-up count).
+    const analytics = await get('/api/v1/partners/me/analytics');
+    const [stats, me] = await Promise.all([
+      get('/api/v1/partners/me/stats').catch(() => null),
+      get('/api/v1/partners/me').catch(() => null),
+    ]);
+
+    const breakdown = (analytics['orderBreakdown'] as Record<string, unknown>) ?? {};
+
+    return {
+      tierName:
+        (analytics['currentTierName'] as string | undefined) ??
+        (me?.['tierName'] as string | undefined) ??
+        null,
+      commissionRate:
+        analytics['effectiveCommissionRate'] != null
+          ? num(analytics['effectiveCommissionRate'])
+          : stats?.['commissionRate'] != null
+            ? num(stats['commissionRate'])
+            : null,
+      totalRevenue: num(analytics['totalRevenue']),
+      totalCommissions: num(analytics['totalCommissions']),
+      paidCommissions: num(stats?.['paidCommissions']),
+      pendingCommissions: num(stats?.['pendingCommissions']),
+      availablePayoutAmount: num(analytics['availablePayoutAmount']),
+      payoutOnHoldAmount: num(analytics['payoutOnHoldAmount']),
+      totalOrders: num(analytics['totalOrders']),
+      paidOrders: num(breakdown['paid']),
+      totalReferralClicks: num(analytics['totalReferralClicks']),
+      totalReferralClicksLast30Days: num(analytics['totalReferralClicksLast30Days']),
+      directReferrals: num(me?.['directReferrals']),
+    };
+  } catch (err) {
+    logger.warn(
+      { err, platformPartnerId },
+      'affiliate-platform: partner dashboard fetch failed — falling back to webhook data',
+    );
+    return null;
+  }
+};

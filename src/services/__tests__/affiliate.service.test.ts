@@ -21,6 +21,7 @@ const mockSendAffiliateApplicationNotification = jest.fn();
 const mockGetUserById = jest.fn();
 const mockIsRegEnabled = jest.fn();
 const mockRegisterPartner = jest.fn();
+const mockFetchPartnerDashboard = jest.fn();
 
 jest.mock('../../repositories/affiliate.repository', () => ({
   createAffiliateApplication: (...args: unknown[]) => mockCreateAffiliateApplication(...args),
@@ -40,6 +41,7 @@ jest.mock('../../repositories/user.repository', () => ({
 jest.mock('../../providers/affiliate/affiliate-platform.client', () => ({
   isAffiliateRegistrationEnabled: () => mockIsRegEnabled(),
   registerPartner: (...args: unknown[]) => mockRegisterPartner(...args),
+  fetchPartnerDashboard: (...args: unknown[]) => mockFetchPartnerDashboard(...args),
 }));
 
 jest.mock('../email.service', () => ({
@@ -399,6 +401,7 @@ describe('handleAffiliateWebhookEvent', () => {
 describe('getMyAffiliateStatus', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetchPartnerDashboard.mockResolvedValue(null);
   });
 
   it('returns a not-applied shell when there is no application', async () => {
@@ -415,7 +418,10 @@ describe('getMyAffiliateStatus', () => {
       referralCode: null,
       appliedAt: null,
       coupons: [],
+      analytics: null,
     });
+    // No linked partner id → never hits the affiliate platform.
+    expect(mockFetchPartnerDashboard).not.toHaveBeenCalled();
   });
 
   it('reports approval + referral code + coupons for an approved affiliate', async () => {
@@ -442,5 +448,55 @@ describe('getMyAffiliateStatus', () => {
     expect(result.appliedAt).toBe('2026-06-28T00:00:00.000Z');
     expect(result.coupons).toHaveLength(1);
     expect(result.coupons[0]).toMatchObject({ code: 'SAVE20', discountValue: 20 });
+  });
+
+  it('merges live analytics when the partner is linked and the fetch succeeds', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue({
+      status: AffiliateApplicationStatus.APPROVED,
+      preferredAffiliateCode: 'FLUX',
+      referralCode: 'FLUX',
+      platformPartnerId: 'partner-uuid-1',
+      createdAt: new Date('2026-06-28T00:00:00.000Z'),
+    });
+    mockFindCouponsByCreator.mockResolvedValue([]);
+    const dashboard = {
+      tierName: 'Community Affiliate',
+      commissionRate: 10,
+      totalRevenue: 1200,
+      totalCommissions: 120,
+      paidCommissions: 50,
+      pendingCommissions: 70,
+      availablePayoutAmount: 70,
+      payoutOnHoldAmount: 0,
+      totalOrders: 8,
+      paidOrders: 6,
+      totalReferralClicks: 340,
+      totalReferralClicksLast30Days: 25,
+      directReferrals: 4,
+    };
+    mockFetchPartnerDashboard.mockResolvedValue(dashboard);
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    // Impersonation must use the platform partner UUID, not the DF user id.
+    expect(mockFetchPartnerDashboard).toHaveBeenCalledWith('partner-uuid-1');
+    expect(result.analytics).toEqual(dashboard);
+  });
+
+  it('falls back to null analytics when the dashboard fetch is unavailable', async () => {
+    mockFindLatestApplicationByCreator.mockResolvedValue({
+      status: AffiliateApplicationStatus.APPROVED,
+      preferredAffiliateCode: 'FLUX',
+      referralCode: 'FLUX',
+      platformPartnerId: 'partner-uuid-1',
+      createdAt: new Date('2026-06-28T00:00:00.000Z'),
+    });
+    mockFindCouponsByCreator.mockResolvedValue([]);
+    mockFetchPartnerDashboard.mockResolvedValue(null); // token missing or fetch failed
+
+    const result = await getMyAffiliateStatus('user-1');
+
+    expect(mockFetchPartnerDashboard).toHaveBeenCalledWith('partner-uuid-1');
+    expect(result.analytics).toBeNull();
   });
 });

@@ -192,3 +192,10 @@ data "aws_secretsmanager_secret" "ypf_client_key" {
 data "aws_secretsmanager_secret" "ypf_webhook_secret" {
   name = "${var.project_name}/${var.environment}/app/ypf-webhook-secret"
 }
+
+# Affiliate Platform service token (M2M). Used to read partner dashboard data
+# via impersonation (X-Service-Token + X-Impersonate-User-Id). Managed
+# out-of-band; Terraform only wires the ARN to the task def + IAM allowlist.
+data "aws_secretsmanager_secret" "affiliate_service_token" {
+  name = "${var.project_name}/${var.environment}/app/affiliate-service-token"
+}

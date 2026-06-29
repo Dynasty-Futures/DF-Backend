@@ -105,6 +105,11 @@ variable "ypf_webhook_secret_arn" {
   type        = string
 }
 
+variable "affiliate_service_token_arn" {
+  description = "ARN of the AFFILIATE_SERVICE_TOKEN secret in Secrets Manager"
+  type        = string
+}
+
 # -----------------------------------------------------------------------------
 # Task Configuration
 # -----------------------------------------------------------------------------
