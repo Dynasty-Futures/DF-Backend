@@ -53,6 +53,12 @@ export interface PayoutEligibilityInput {
   tradingDays?: number | undefined;
   /** Trader's profit-split % (e.g. 80 = keeps 80%). */
   profitSplit?: number | undefined;
+  /**
+   * DF plan-level maximum payout per eligible cycle (from AccountType), in
+   * dollars. Tightens the ceiling alongside YPF's own cap. Undefined/0 = not
+   * configured → no plan cap applied (fail-permissive, same as YPF thresholds).
+   */
+  planPayoutCap?: number | undefined;
   /** Merged program + account withdrawal thresholds. */
   rules?: AccountWithdrawalRules | undefined;
   /** The amount being requested. Omit when only assessing account eligibility. */
@@ -208,10 +214,15 @@ export const evaluatePayoutEligibility = (
   const minAmount = isPositive(r.minWithdrawalAmount)
     ? round2(r.minWithdrawalAmount)
     : 0;
-  // Profit cap (if configured) tightens the ceiling below available profit.
-  const maxAmount = isPositive(r.maxWithdrawalAmount)
-    ? Math.min(availableProfit, round2(r.maxWithdrawalAmount))
-    : availableProfit;
+  // The ceiling is the withdrawable profit, tightened by whichever caps are
+  // configured: YPF's per-account/program cap and DF's plan-level cap. Each is
+  // fail-permissive — applied only when present and positive.
+  const caps = [availableProfit];
+  if (isPositive(r.maxWithdrawalAmount)) caps.push(round2(r.maxWithdrawalAmount));
+  if (isPositive(input.planPayoutCap)) caps.push(round2(input.planPayoutCap));
+  const maxAmount = Math.min(...caps);
+  // True when a configured cap actually tightened the ceiling below available profit.
+  const capApplied = maxAmount < availableProfit;
 
   const accountEligible = rules.every((rule) => rule.passed);
 
@@ -234,12 +245,12 @@ export const evaluatePayoutEligibility = (
           })}`,
         );
       }
-      if (isPositive(r.maxWithdrawalAmount) && amount > maxAmount) {
+      if (capApplied && amount > maxAmount) {
         amountErrors.push(
           `Maximum payout is ${maxAmount.toLocaleString('en-US', {
             style: 'currency',
             currency: 'USD',
-          })}`,
+          })} per eligible payout cycle`,
         );
       }
     }
