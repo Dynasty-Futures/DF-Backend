@@ -59,6 +59,12 @@ export interface PayoutEligibilityInput {
    * configured → no plan cap applied (fail-permissive, same as YPF thresholds).
    */
   planPayoutCap?: number | undefined;
+  /**
+   * DF plan-level minimum payout (from AccountType.minPayoutAmount), in dollars.
+   * The trader must request at least the MORE restrictive (higher) of this and
+   * YPF's own minimum. Undefined/0 = no DF minimum.
+   */
+  planMinPayout?: number | undefined;
   /** Merged program + account withdrawal thresholds. */
   rules?: AccountWithdrawalRules | undefined;
   /** The amount being requested. Omit when only assessing account eligibility. */
@@ -211,9 +217,11 @@ export const evaluatePayoutEligibility = (
   });
 
   // ── Amount bounds ──────────────────────────────────────────────────────────
-  const minAmount = isPositive(r.minWithdrawalAmount)
-    ? round2(r.minWithdrawalAmount)
-    : 0;
+  // The trader must clear the MORE restrictive (higher) of YPF's minimum and
+  // DF's plan minimum. Each is fail-permissive (0/undefined = not enforced).
+  const ypfMin = isPositive(r.minWithdrawalAmount) ? round2(r.minWithdrawalAmount) : 0;
+  const dfMin = isPositive(input.planMinPayout) ? round2(input.planMinPayout) : 0;
+  const minAmount = Math.max(ypfMin, dfMin);
   // The ceiling is the withdrawable profit, tightened by whichever caps are
   // configured: YPF's per-account/program cap and DF's plan-level cap. Each is
   // fail-permissive — applied only when present and positive.
