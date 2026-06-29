@@ -102,6 +102,7 @@ export const getUserAccounts = async (userId: string, live = false) => {
           displayName: true,
           accountSize: true,
           profitSplit: true,
+          payoutCycleCap: true,
           price: true,
         },
       },
@@ -131,6 +132,7 @@ export const getAccountDetail = async (accountId: string, userId: string) => {
           displayName: true,
           accountSize: true,
           profitSplit: true,
+          payoutCycleCap: true,
         },
       },
       // Most-recent challenge of ANY status — a breached/failed account has no

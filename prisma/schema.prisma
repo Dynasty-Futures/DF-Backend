@@ -297,6 +297,9 @@ model AccountType {
   // Payout settings
   minPayoutAmount  Decimal @map("min_payout_amount") @db.Decimal(10, 2)
   payoutFrequency  String  @map("payout_frequency") // "bi-weekly", "weekly", "on-demand"
+  // DF plan-level maximum payout per eligible payout cycle (null = not capped).
+  // Source of truth for the dashboard display AND the eligibility ceiling.
+  payoutCycleCap   Decimal? @map("payout_cycle_cap") @db.Decimal(10, 2)
 
   isActive    Boolean @default(true) @map("is_active")
   sortOrder   Int     @default(0) @map("sort_order")
