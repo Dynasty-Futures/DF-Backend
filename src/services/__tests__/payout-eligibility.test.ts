@@ -228,11 +228,72 @@ describe('evaluatePayoutEligibility', () => {
       expect(result.amountErrors.some((e) => /Minimum payout/i.test(e))).toBe(true);
     });
 
+    it('applies the DF plan minimum when YPF has none', () => {
+      const result = evaluatePayoutEligibility(baseInput({ planMinPayout: 250 }));
+      expect(result.minAmount).toBe(250);
+    });
+
+    it('uses the HIGHER (more restrictive) of the DF and YPF minimums', () => {
+      const ypfHigher = evaluatePayoutEligibility(
+        baseInput({ planMinPayout: 250, rules: { minWithdrawalAmount: 500 } }),
+      );
+      expect(ypfHigher.minAmount).toBe(500);
+      const dfHigher = evaluatePayoutEligibility(
+        baseInput({ planMinPayout: 250, rules: { minWithdrawalAmount: 100 } }),
+      );
+      expect(dfHigher.minAmount).toBe(250);
+    });
+
+    it('rejects an amount below the DF plan minimum', () => {
+      const result = evaluatePayoutEligibility(
+        baseInput({ requestedAmount: 200, planMinPayout: 250 }),
+      );
+      expect(result.amountErrors.some((e) => /Minimum payout/i.test(e))).toBe(true);
+    });
+
+    it('ignores a plan minimum of 0 / undefined (fail-permissive)', () => {
+      expect(evaluatePayoutEligibility(baseInput({ planMinPayout: 0 })).minAmount).toBe(0);
+      expect(evaluatePayoutEligibility(baseInput()).minAmount).toBe(0);
+    });
+
     it('rejects an amount above the profit cap', () => {
       const result = evaluatePayoutEligibility(
         baseInput({ requestedAmount: 9_000, rules: { maxWithdrawalAmount: 8_000 } }),
       );
       expect(result.amountErrors.some((e) => /Maximum payout/i.test(e))).toBe(true);
+    });
+
+    it('applies the DF plan payout cap as the ceiling', () => {
+      // available profit is 10,000; the plan cap tightens it to 3,500.
+      const result = evaluatePayoutEligibility(baseInput({ planPayoutCap: 3_500 }));
+      expect(result.maxAmount).toBe(3_500);
+    });
+
+    it('uses the LOWER of the plan cap and the YPF cap', () => {
+      const planLower = evaluatePayoutEligibility(
+        baseInput({ planPayoutCap: 3_500, rules: { maxWithdrawalAmount: 5_000 } }),
+      );
+      expect(planLower.maxAmount).toBe(3_500);
+      const ypfLower = evaluatePayoutEligibility(
+        baseInput({ planPayoutCap: 3_500, rules: { maxWithdrawalAmount: 2_000 } }),
+      );
+      expect(ypfLower.maxAmount).toBe(2_000);
+    });
+
+    it('rejects an amount above the plan payout cap', () => {
+      const result = evaluatePayoutEligibility(
+        baseInput({ requestedAmount: 5_000, planPayoutCap: 3_500 }),
+      );
+      expect(
+        result.amountErrors.some((e) => /Maximum payout.*eligible payout cycle/i.test(e)),
+      ).toBe(true);
+    });
+
+    it('ignores a plan cap of 0 / undefined (fail-permissive)', () => {
+      expect(evaluatePayoutEligibility(baseInput({ planPayoutCap: 0 })).maxAmount).toBe(
+        10_000,
+      );
+      expect(evaluatePayoutEligibility(baseInput()).maxAmount).toBe(10_000);
     });
 
     it('rejects a zero / negative amount', () => {

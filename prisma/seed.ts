@@ -18,6 +18,7 @@ interface AccountTypeSeed {
   profitSplit: number;
   minPayoutAmount: number;
   payoutFrequency: string;
+  payoutCycleCap: number;
   sortOrder: number;
   rules: ChallengeRuleSeed[];
 }
@@ -65,8 +66,9 @@ function buildStandardAccountTypes(): AccountTypeSeed[] {
       price: p.price,
       resetPrice: p.resetPrice,
       profitSplit: 90,
-      minPayoutAmount: 500,
+      minPayoutAmount: 250,
       payoutFrequency: '5-day',
+      payoutCycleCap: 5000,
       sortOrder: i + 1,
       rules: [
         {
@@ -118,8 +120,9 @@ function buildAdvancedAccountTypes(): AccountTypeSeed[] {
       price: p.price,
       resetPrice: p.resetPrice,
       profitSplit: 90,
-      minPayoutAmount: 500,
+      minPayoutAmount: 250,
       payoutFrequency: '5-day',
+      payoutCycleCap: 3500,
       sortOrder: i + 5,
       rules: [
         {
@@ -171,8 +174,9 @@ function buildDynastyAccountTypes(): AccountTypeSeed[] {
       price: p.price,
       resetPrice: p.resetPrice,
       profitSplit: 90,
-      minPayoutAmount: 500,
+      minPayoutAmount: 250,
       payoutFrequency: 'daily',
+      payoutCycleCap: 3000,
       sortOrder: i + 9,
       rules: [
         {
@@ -218,6 +222,7 @@ async function main() {
         profitSplit: at.profitSplit,
         minPayoutAmount: at.minPayoutAmount,
         payoutFrequency: at.payoutFrequency,
+        payoutCycleCap: at.payoutCycleCap,
         sortOrder: at.sortOrder,
         isActive: true,
       },
@@ -231,6 +236,7 @@ async function main() {
         profitSplit: at.profitSplit,
         minPayoutAmount: at.minPayoutAmount,
         payoutFrequency: at.payoutFrequency,
+        payoutCycleCap: at.payoutCycleCap,
         sortOrder: at.sortOrder,
         isActive: true,
       },

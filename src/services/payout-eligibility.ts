@@ -53,6 +53,18 @@ export interface PayoutEligibilityInput {
   tradingDays?: number | undefined;
   /** Trader's profit-split % (e.g. 80 = keeps 80%). */
   profitSplit?: number | undefined;
+  /**
+   * DF plan-level maximum payout per eligible cycle (from AccountType), in
+   * dollars. Tightens the ceiling alongside YPF's own cap. Undefined/0 = not
+   * configured → no plan cap applied (fail-permissive, same as YPF thresholds).
+   */
+  planPayoutCap?: number | undefined;
+  /**
+   * DF plan-level minimum payout (from AccountType.minPayoutAmount), in dollars.
+   * The trader must request at least the MORE restrictive (higher) of this and
+   * YPF's own minimum. Undefined/0 = no DF minimum.
+   */
+  planMinPayout?: number | undefined;
   /** Merged program + account withdrawal thresholds. */
   rules?: AccountWithdrawalRules | undefined;
   /** The amount being requested. Omit when only assessing account eligibility. */
@@ -205,13 +217,20 @@ export const evaluatePayoutEligibility = (
   });
 
   // ── Amount bounds ──────────────────────────────────────────────────────────
-  const minAmount = isPositive(r.minWithdrawalAmount)
-    ? round2(r.minWithdrawalAmount)
-    : 0;
-  // Profit cap (if configured) tightens the ceiling below available profit.
-  const maxAmount = isPositive(r.maxWithdrawalAmount)
-    ? Math.min(availableProfit, round2(r.maxWithdrawalAmount))
-    : availableProfit;
+  // The trader must clear the MORE restrictive (higher) of YPF's minimum and
+  // DF's plan minimum. Each is fail-permissive (0/undefined = not enforced).
+  const ypfMin = isPositive(r.minWithdrawalAmount) ? round2(r.minWithdrawalAmount) : 0;
+  const dfMin = isPositive(input.planMinPayout) ? round2(input.planMinPayout) : 0;
+  const minAmount = Math.max(ypfMin, dfMin);
+  // The ceiling is the withdrawable profit, tightened by whichever caps are
+  // configured: YPF's per-account/program cap and DF's plan-level cap. Each is
+  // fail-permissive — applied only when present and positive.
+  const caps = [availableProfit];
+  if (isPositive(r.maxWithdrawalAmount)) caps.push(round2(r.maxWithdrawalAmount));
+  if (isPositive(input.planPayoutCap)) caps.push(round2(input.planPayoutCap));
+  const maxAmount = Math.min(...caps);
+  // True when a configured cap actually tightened the ceiling below available profit.
+  const capApplied = maxAmount < availableProfit;
 
   const accountEligible = rules.every((rule) => rule.passed);
 
@@ -234,12 +253,12 @@ export const evaluatePayoutEligibility = (
           })}`,
         );
       }
-      if (isPositive(r.maxWithdrawalAmount) && amount > maxAmount) {
+      if (capApplied && amount > maxAmount) {
         amountErrors.push(
           `Maximum payout is ${maxAmount.toLocaleString('en-US', {
             style: 'currency',
             currency: 'USD',
-          })}`,
+          })} per eligible payout cycle`,
         );
       }
     }

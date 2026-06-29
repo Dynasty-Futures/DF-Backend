@@ -129,6 +129,8 @@ interface AccountForEligibility {
   platformAccountId: string | null;
   platformUserId: string | null;
   user?: { platformUserId: string | null } | null;
+  /** DF plan-level payout cap + minimum (Decimals) — folded into the eligibility bounds. */
+  accountType?: { payoutCycleCap: unknown; minPayoutAmount?: unknown } | null;
 }
 
 const resolvePlatformUserId = (a: AccountForEligibility): string | null =>
@@ -173,6 +175,14 @@ const buildEligibilityInput = (
   activeDays: live?.activeDays,
   tradingDays: live?.tradingDays,
   profitSplit: live?.profitSplit,
+  planPayoutCap:
+    account.accountType?.payoutCycleCap != null
+      ? Number(account.accountType.payoutCycleCap)
+      : undefined,
+  planMinPayout:
+    account.accountType?.minPayoutAmount != null
+      ? Number(account.accountType.minPayoutAmount)
+      : undefined,
   rules: live?.withdrawalRules,
   ...(requestedAmount !== undefined ? { requestedAmount } : {}),
 });
