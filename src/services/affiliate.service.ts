@@ -171,18 +171,28 @@ const registerOnAffiliatePlatform = async (
   creatorId: string
 ): Promise<void> => {
   const user = await getUserById(creatorId);
-  if (!user?.email || !user.firstName || !user.lastName) {
+  // Email is the only truly-required field — we can't register a partner without
+  // it. The affiliate platform requires non-empty first AND last names, but DF
+  // signup allows a blank last name (and some OAuth paths leave a sparse first
+  // name), so we derive fallbacks instead of silently skipping registration —
+  // otherwise a mononym user can never become an affiliate. The partner can edit
+  // their display name in the affiliate profile afterward.
+  const email = user?.email?.trim();
+  if (!email) {
     logger.warn(
       { applicationId: application.id, creatorId },
-      'affiliate-platform: missing user name/email — skipping registration'
+      'affiliate-platform: missing user email — skipping registration'
     );
     return;
   }
+  const emailLocal = email.split('@')[0]?.trim() || 'Affiliate';
+  const firstName = user?.firstName?.trim() || emailLocal;
+  const lastName = user?.lastName?.trim() || firstName;
 
   const result = await registerPartner({
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
+    email,
+    firstName,
+    lastName,
     // Throwaway: the affiliate never logs into the affiliate platform directly;
     // DF surfaces their data via service-token impersonation (Phase 2).
     password: crypto.randomBytes(24).toString('base64url'),

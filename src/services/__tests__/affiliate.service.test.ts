@@ -232,7 +232,7 @@ describe('affiliateService.submitApplication', () => {
     });
   });
 
-  it('skips registration when the user is missing a name/email', async () => {
+  it('skips registration only when the user has no email', async () => {
     mockIsRegEnabled.mockReturnValue(true);
     mockCreateAffiliateApplication.mockResolvedValue(persisted({ creatorId: 'user-1' }));
     mockGetUserById.mockResolvedValue({ id: 'user-1', email: null, firstName: null });
@@ -241,6 +241,65 @@ describe('affiliateService.submitApplication', () => {
     await flush();
 
     expect(mockRegisterPartner).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a derived last name when the user has none (mononym)', async () => {
+    mockIsRegEnabled.mockReturnValue(true);
+    mockCreateAffiliateApplication.mockResolvedValue(
+      persisted({ id: 'app-mono', creatorId: 'user-1' })
+    );
+    // DF signup allows a blank last name — the affiliate platform requires one,
+    // so registration must still fire (previously it was silently skipped).
+    mockGetUserById.mockResolvedValue({
+      id: 'user-1',
+      email: 'frank@example.com',
+      firstName: 'Frank',
+      lastName: '',
+    });
+    mockRegisterPartner.mockResolvedValue({
+      partnerId: 'partner-mono',
+      status: 'PENDING_APPROVAL',
+      alreadyExists: false,
+    });
+
+    await submitApplication({ ...validInput(), creatorId: 'user-1' });
+    await flush();
+
+    expect(mockRegisterPartner).toHaveBeenCalledTimes(1);
+    expect(mockRegisterPartner.mock.calls[0][0]).toMatchObject({
+      email: 'frank@example.com',
+      firstName: 'Frank',
+      lastName: 'Frank', // falls back to first name
+      externalId: 'user-1',
+    });
+  });
+
+  it('derives both names from the email local part when both are blank', async () => {
+    mockIsRegEnabled.mockReturnValue(true);
+    mockCreateAffiliateApplication.mockResolvedValue(
+      persisted({ id: 'app-blank', creatorId: 'user-1' })
+    );
+    mockGetUserById.mockResolvedValue({
+      id: 'user-1',
+      email: 'soloname@example.com',
+      firstName: '',
+      lastName: '',
+    });
+    mockRegisterPartner.mockResolvedValue({
+      partnerId: 'partner-blank',
+      status: 'PENDING_APPROVAL',
+      alreadyExists: false,
+    });
+
+    await submitApplication({ ...validInput(), creatorId: 'user-1' });
+    await flush();
+
+    expect(mockRegisterPartner).toHaveBeenCalledTimes(1);
+    expect(mockRegisterPartner.mock.calls[0][0]).toMatchObject({
+      email: 'soloname@example.com',
+      firstName: 'soloname', // derived from the email local part
+      lastName: 'soloname',
+    });
   });
 
   it('marks ALREADY_REGISTERED on a 409 conflict', async () => {
