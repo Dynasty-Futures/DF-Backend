@@ -63,6 +63,7 @@ interface YPFAccountResponse {
   activeDays?: number;
   profitSplit?: number;
   isLevelUpReached?: boolean;
+  isResetBefore?: boolean;
   upgradeRequestDate?: string | null;
   extraValues?: YPFExtraValueEntry[];
 }
@@ -221,6 +222,7 @@ const mapAccount = (a: YPFAccountResponse): PlatformAccountResult => {
   if (a.profitSplit !== undefined) result.profitSplit = a.profitSplit;
   if (a.isLevelUpReached !== undefined)
     result.isLevelUpReached = a.isLevelUpReached;
+  if (a.isResetBefore !== undefined) result.isResetBefore = a.isResetBefore;
   if (a.upgradeRequestDate) result.upgradeRequestDate = a.upgradeRequestDate;
   // The trading platform's "Login ID" is the trader's EMAIL (what the hosted
   // Volumetrica portal prompts for), not YPF's internal account login id. Fall

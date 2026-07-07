@@ -161,6 +161,9 @@ export interface PlatformAccountResult {
   /** YPF flag: the account has met its profit target and can be upgraded to the
    * next program level (eval → funded). Drives the "Upgrade" CTA. */
   isLevelUpReached?: boolean | undefined;
+  /** YPF flag: this account has already been reset once. A reset may only be
+   * purchased once per account, so this gates the reset CTA/checkout. */
+  isResetBefore?: boolean | undefined;
   /** ISO timestamp set once an upgrade has been requested (sparse — not on the
    * plain account GET, present on richer responses). Absent = no pending upgrade. */
   upgradeRequestDate?: string | undefined;

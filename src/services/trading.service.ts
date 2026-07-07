@@ -397,6 +397,15 @@ export const getCheckoutUrl = async (
       'This account is not linked to a trading program yet.',
     );
   }
+  // A reset may be purchased only ONCE per account (eval or funded phase alike).
+  // YPF's `isResetBefore` flips true after an account has been reset, so a second
+  // reset checkout is blocked here (and the FE hides the button).
+  if (purpose === 'reset' && live.isResetBefore === true) {
+    throw new BadRequestError(
+      'This account has already been reset once and cannot be reset again.',
+    );
+  }
+
   const program = await provider.getProgram(live.programId);
 
   const baseUrl =
