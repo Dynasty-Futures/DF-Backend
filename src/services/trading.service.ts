@@ -13,6 +13,7 @@ import {
   ForbiddenError,
   BadRequestError,
   PlatformError,
+  ServiceUnavailableError,
 } from '../utils/errors.js';
 import { getTradingPlatformProvider } from '../providers/index.js';
 import { getVolumetricaIFrameUrl } from '../providers/volumetrica/volumetrica-sso.js';
@@ -357,6 +358,72 @@ export const requestUpgrade = async (accountId: string, userId: string) => {
   }
 
   return result;
+};
+
+// =============================================================================
+// WooCommerce checkout deep-links (reset / activation)
+// =============================================================================
+// Both flows buy a product on YPF's WooCommerce store bound to a SPECIFIC
+// account via a short-lived encrypted `ypf-ref` code we mint from YPF. YPF hands
+// us the canonical per-program checkout URL (`accountResetUrl` / `activationUrl`,
+// already carrying `?add-to-cart=…`); we just append a freshly-minted ref code
+// and hand the trader a ready-to-open URL. The code expires in 5 minutes, so we
+// mint on demand per click rather than caching.
+
+export type CheckoutPurpose = 'reset' | 'activation';
+
+export const getCheckoutUrl = async (
+  accountId: string,
+  userId: string,
+  purpose: CheckoutPurpose,
+): Promise<{ url: string }> => {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId, deletedAt: null },
+  });
+  if (!account) throw new NotFoundError('Account not found');
+  if (account.userId !== userId) throw new ForbiddenError('Not your account');
+
+  const ids = requirePlatformIds(account);
+  const provider = getTradingPlatformProvider();
+
+  // Read the live account to resolve its CURRENT program (eval vs funded may
+  // have advanced since our last sync), then pull that program's checkout URLs.
+  const live = await provider.getAccount(
+    ids.platformUserId,
+    ids.platformAccountId,
+  );
+  if (!live.programId) {
+    throw new BadRequestError(
+      'This account is not linked to a trading program yet.',
+    );
+  }
+  const program = await provider.getProgram(live.programId);
+
+  const baseUrl =
+    purpose === 'reset' ? program.accountResetUrl : program.activationUrl;
+  if (!baseUrl) {
+    throw new BadRequestError(
+      purpose === 'reset'
+        ? 'Resets are not available for this account yet.'
+        : 'This account does not require activation.',
+    );
+  }
+
+  // Mint the per-account ref code (5-min TTL). Null = YPF failed to generate it.
+  const refCode = await provider.getRefCode(
+    ids.platformUserId,
+    ids.platformAccountId,
+  );
+  if (!refCode) {
+    throw new ServiceUnavailableError(
+      'Could not prepare checkout right now — please try again in a moment.',
+    );
+  }
+
+  // Append ypf-ref safely regardless of existing query string.
+  const url = new URL(baseUrl);
+  url.searchParams.set('ypf-ref', refCode);
+  return { url: url.toString() };
 };
 
 // =============================================================================

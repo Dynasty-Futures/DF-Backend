@@ -200,6 +200,14 @@ export interface PlatformProgramResult {
   isWithdrawalAllowed?: boolean | undefined;
   /** Program-level minimum allowed withdrawal amount. */
   lowestAllowedWithdraw?: number | undefined;
+  /** WooCommerce checkout URL to RESET an account on this program (already
+   * carries `?add-to-cart=…`; append `&ypf-ref=<code>` before redirecting). */
+  accountResetUrl?: string | undefined;
+  /** WooCommerce checkout URL to ACTIVATE a funded account (Standard $80 fee).
+   * Present only when `isRequireActivation` is true. Append the ref code too. */
+  activationUrl?: string | undefined;
+  /** Whether reaching this (funded) program requires a paid activation. */
+  isRequireActivation?: boolean | undefined;
   raw?: Record<string, unknown> | undefined;
 }
 

@@ -182,6 +182,49 @@ router.post(
 );
 
 /**
+ * POST /v1/trading/accounts/:id/reset-checkout
+ * **LIVE** — mint a per-account `ypf-ref` and return the WooCommerce reset URL.
+ */
+router.post(
+  '/accounts/:id/reset-checkout',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const accountId = req.params['id'] as string;
+      const result = await tradingService.getCheckoutUrl(
+        accountId,
+        req.user!.id,
+        'reset',
+      );
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * POST /v1/trading/accounts/:id/activation-checkout
+ * **LIVE** — mint a per-account `ypf-ref` and return the WooCommerce Standard
+ * $80 activation URL (only for funded programs that require activation).
+ */
+router.post(
+  '/accounts/:id/activation-checkout',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const accountId = req.params['id'] as string;
+      const result = await tradingService.getCheckoutUrl(
+        accountId,
+        req.user!.id,
+        'activation',
+      );
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
  * GET /v1/trading/dashboard-url
  * **LIVE** — one-time-use token from provider.
  */

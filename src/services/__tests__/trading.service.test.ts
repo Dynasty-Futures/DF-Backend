@@ -1,8 +1,9 @@
-import { requestUpgrade } from '../trading.service';
+import { requestUpgrade, getCheckoutUrl } from '../trading.service';
 import {
   BadRequestError,
   NotFoundError,
   ForbiddenError,
+  ServiceUnavailableError,
 } from '../../utils/errors';
 
 // =============================================================================
@@ -21,11 +22,15 @@ jest.mock('../../utils/database', () => ({
 
 const mockGetAccount = jest.fn();
 const mockUpgradeAccount = jest.fn();
+const mockGetProgram = jest.fn();
+const mockGetRefCode = jest.fn();
 
 jest.mock('../../providers/index', () => ({
   getTradingPlatformProvider: () => ({
     getAccount: (...args: unknown[]) => mockGetAccount(...args),
     upgradeAccount: (...args: unknown[]) => mockUpgradeAccount(...args),
+    getProgram: (...args: unknown[]) => mockGetProgram(...args),
+    getRefCode: (...args: unknown[]) => mockGetRefCode(...args),
   }),
 }));
 
@@ -171,6 +176,92 @@ describe('requestUpgrade', () => {
     await expect(requestUpgrade('acc-1', 'user-1')).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+    expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// getCheckoutUrl (reset / activation)
+// =============================================================================
+
+describe('getCheckoutUrl', () => {
+  const program = (overrides: Record<string, unknown> = {}) => ({
+    programId: 'prog-1',
+    name: '50k Standard',
+    initialBalance: 50000,
+    currency: 'USD',
+    accountResetUrl:
+      'https://checkout.dynastyfuturesdyn.com/checkout/?add-to-cart=64',
+    activationUrl:
+      'https://checkout.dynastyfuturesdyn.com/checkout/?add-to-cart=48&program-activation=1',
+    isRequireActivation: true,
+    ...overrides,
+  });
+
+  it('mints a ref code and appends it to the reset URL', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
+    mockGetProgram.mockResolvedValue(program());
+    mockGetRefCode.mockResolvedValue('REF123');
+
+    const { url } = await getCheckoutUrl('acc-1', 'user-1', 'reset');
+
+    expect(mockGetProgram).toHaveBeenCalledWith('prog-1');
+    expect(mockGetRefCode).toHaveBeenCalledWith('p-usr-1', 'p-acc-1');
+    expect(url).toBe(
+      'https://checkout.dynastyfuturesdyn.com/checkout/?add-to-cart=64&ypf-ref=REF123',
+    );
+  });
+
+  it('uses the activation URL for activation purpose', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
+    mockGetProgram.mockResolvedValue(program());
+    mockGetRefCode.mockResolvedValue('REF123');
+
+    const { url } = await getCheckoutUrl('acc-1', 'user-1', 'activation');
+
+    expect(url).toContain('add-to-cart=48');
+    expect(url).toContain('program-activation=1');
+    expect(url).toContain('ypf-ref=REF123');
+  });
+
+  it('blocks when the program has no URL for the requested purpose', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
+    mockGetProgram.mockResolvedValue(
+      program({ activationUrl: undefined, isRequireActivation: false }),
+    );
+
+    await expect(
+      getCheckoutUrl('acc-1', 'user-1', 'activation'),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    expect(mockGetRefCode).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a retryable error when YPF fails to mint a ref code (N/A → null)', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
+    mockGetProgram.mockResolvedValue(program());
+    mockGetRefCode.mockResolvedValue(null);
+
+    await expect(
+      getCheckoutUrl('acc-1', 'user-1', 'reset'),
+    ).rejects.toBeInstanceOf(ServiceUnavailableError);
+  });
+
+  it('throws NotFound when the account is missing', async () => {
+    mockAccountFindUnique.mockResolvedValue(null);
+    await expect(
+      getCheckoutUrl('missing', 'user-1', 'reset'),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('throws Forbidden when the account belongs to another user', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount({ userId: 'other' }));
+    await expect(
+      getCheckoutUrl('acc-1', 'user-1', 'reset'),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(mockGetAccount).not.toHaveBeenCalled();
   });
 });
