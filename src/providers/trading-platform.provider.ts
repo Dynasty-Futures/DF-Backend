@@ -71,6 +71,13 @@ export interface TradingPlatformProvider {
     platformAccountId: string,
     amount: number,
   ): Promise<void>;
+  /** Mint a short-lived encrypted `ypf-ref` code binding a user+account to a
+   * WooCommerce checkout (reset / activation). Null when the platform failed
+   * to generate one (YPF's "N/A"). */
+  getRefCode(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<string | null>;
 
   // ── Data Retrieval (account-scoped under user) ──────────────────────────
 

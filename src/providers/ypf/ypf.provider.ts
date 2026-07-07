@@ -134,6 +134,9 @@ interface YPFProgramResponse {
   isEnabled?: boolean;
   isWithdrawalAllowed?: boolean;
   lowestAllowedWithdraw?: number;
+  accountResetUrl?: string;
+  activationUrl?: string;
+  isRequireActivation?: boolean;
   createdAt?: string;
 }
 
@@ -287,6 +290,11 @@ const mapProgram = (p: YPFProgramResponse): PlatformProgramResult => {
     result.isWithdrawalAllowed = p.isWithdrawalAllowed;
   if (p.lowestAllowedWithdraw !== undefined)
     result.lowestAllowedWithdraw = p.lowestAllowedWithdraw;
+  if (p.accountResetUrl !== undefined)
+    result.accountResetUrl = p.accountResetUrl;
+  if (p.activationUrl !== undefined) result.activationUrl = p.activationUrl;
+  if (p.isRequireActivation !== undefined)
+    result.isRequireActivation = p.isRequireActivation;
   return result;
 };
 
@@ -782,6 +790,23 @@ export class YPFProvider implements TradingPlatformProvider {
     if (params?.name) query['name'] = params.name;
     const res = await this.client.get<YPFProgramResponse[]>('/programs', query);
     return (res ?? []).map(mapProgram);
+  }
+
+  // Mint a short-lived (5-min) encrypted ref code binding a user+account to a
+  // WooCommerce checkout (the `ypf-ref` token). Used to deep-link reset /
+  // activation purchases to a specific account. YPF returns the literal string
+  // "N/A" when generation fails on their end — treat that as null so callers
+  // don't pass a dud downstream.
+  async getRefCode(
+    platformUserId: string,
+    platformAccountId: string,
+  ): Promise<string | null> {
+    const res = await this.client.get<{ refCode?: string }>(
+      `/users/${encodeURIComponent(platformUserId)}/refcode/${encodeURIComponent(platformAccountId)}`,
+    );
+    const code = res?.refCode;
+    if (!code || code === 'N/A') return null;
+    return code;
   }
 
   // ── Payouts ─────────────────────────────────────────────────────────────
