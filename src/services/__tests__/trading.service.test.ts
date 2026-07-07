@@ -231,6 +231,33 @@ describe('getCheckoutUrl', () => {
     expect(url).not.toContain('program-reset');
   });
 
+  it('blocks a second reset when the account was already reset (isResetBefore)', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(
+      liveAccount({ programId: 'prog-1', isResetBefore: true }),
+    );
+    mockGetProgram.mockResolvedValue(program());
+
+    await expect(
+      getCheckoutUrl('acc-1', 'user-1', 'reset'),
+    ).rejects.toBeInstanceOf(BadRequestError);
+    // must not even reach program lookup / mint
+    expect(mockGetProgram).not.toHaveBeenCalled();
+    expect(mockGetRefCode).not.toHaveBeenCalled();
+  });
+
+  it('allows activation even when isResetBefore is true (limit is reset-only)', async () => {
+    mockAccountFindUnique.mockResolvedValue(linkedAccount());
+    mockGetAccount.mockResolvedValue(
+      liveAccount({ programId: 'prog-1', isResetBefore: true }),
+    );
+    mockGetProgram.mockResolvedValue(program());
+    mockGetRefCode.mockResolvedValue('REF123');
+
+    const { url } = await getCheckoutUrl('acc-1', 'user-1', 'activation');
+    expect(url).toContain('program-activation=1');
+  });
+
   it('blocks when the program has no URL for the requested purpose', async () => {
     mockAccountFindUnique.mockResolvedValue(linkedAccount());
     mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
