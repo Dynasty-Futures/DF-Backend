@@ -208,12 +208,15 @@ describe('getCheckoutUrl', () => {
 
     expect(mockGetProgram).toHaveBeenCalledWith('prog-1');
     expect(mockGetRefCode).toHaveBeenCalledWith('p-usr-1', 'p-acc-1');
+    // `add-to-cart` MUST be stripped (it causes the checkout↔cart redirect
+    // loop); the ypf-ref binds the product itself.
     expect(url).toBe(
-      'https://checkout.dynastyfuturesdyn.com/checkout/?add-to-cart=64&ypf-ref=REF123',
+      'https://checkout.dynastyfuturesdyn.com/checkout/?ypf-ref=REF123',
     );
+    expect(url).not.toContain('add-to-cart');
   });
 
-  it('uses the activation URL for activation purpose', async () => {
+  it('uses the activation URL for activation purpose (keeps discriminator, drops add-to-cart)', async () => {
     mockAccountFindUnique.mockResolvedValue(linkedAccount());
     mockGetAccount.mockResolvedValue(liveAccount({ programId: 'prog-1' }));
     mockGetProgram.mockResolvedValue(program());
@@ -221,7 +224,7 @@ describe('getCheckoutUrl', () => {
 
     const { url } = await getCheckoutUrl('acc-1', 'user-1', 'activation');
 
-    expect(url).toContain('add-to-cart=48');
+    expect(url).not.toContain('add-to-cart');
     expect(url).toContain('program-activation=1');
     expect(url).toContain('ypf-ref=REF123');
   });

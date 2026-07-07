@@ -420,8 +420,16 @@ export const getCheckoutUrl = async (
     );
   }
 
-  // Append ypf-ref safely regardless of existing query string.
+  // Build the final URL from YPF's base + the minted ref code. Critically, we
+  // DROP `add-to-cart`: the encrypted `ypf-ref` already binds the product +
+  // account + action, and leaving `add-to-cart` in kicks off a second,
+  // conflicting WooCommerce add-to-cart flow that sends the browser into an
+  // infinite checkout↔cart redirect loop ("too many redirects"). Verified live:
+  // `/checkout/?ypf-ref=…` lands a populated cart (200); `…?add-to-cart=N&ypf-ref=…`
+  // loops. Any other params (e.g. `program-activation=1`) are preserved as the
+  // reset/activation discriminator.
   const url = new URL(baseUrl);
+  url.searchParams.delete('add-to-cart');
   url.searchParams.set('ypf-ref', refCode);
   return { url: url.toString() };
 };
