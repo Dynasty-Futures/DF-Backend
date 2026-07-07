@@ -491,6 +491,52 @@ describe('YPFProvider', () => {
       expect(mockGet).toHaveBeenCalledWith('/programs/prog-50k-p1');
       expect(result.initialBalance).toBe(50000);
     });
+
+    it('maps checkout URLs (reset / activation) when present', async () => {
+      mockGet.mockResolvedValueOnce(
+        makeYpfProgram({
+          accountResetUrl: 'https://checkout.example.com/checkout/?add-to-cart=64',
+          activationUrl:
+            'https://checkout.example.com/checkout/?add-to-cart=48&program-activation=1',
+          isRequireActivation: true,
+        }),
+      );
+
+      const result = await provider.getProgram('prog-50k-funded');
+
+      expect(result.accountResetUrl).toBe(
+        'https://checkout.example.com/checkout/?add-to-cart=64',
+      );
+      expect(result.activationUrl).toContain('program-activation=1');
+      expect(result.isRequireActivation).toBe(true);
+    });
+  });
+
+  describe('getRefCode', () => {
+    it('returns the ref code from GET /users/{u}/refcode/{a}', async () => {
+      mockGet.mockResolvedValueOnce({ refCode: 'abcdef123456' });
+
+      const result = await provider.getRefCode('usr-001', 'acc-001');
+
+      expect(mockGet).toHaveBeenCalledWith('/users/usr-001/refcode/acc-001');
+      expect(result).toBe('abcdef123456');
+    });
+
+    it('returns null when YPF reports generation failure ("N/A")', async () => {
+      mockGet.mockResolvedValueOnce({ refCode: 'N/A' });
+
+      const result = await provider.getRefCode('usr-001', 'acc-001');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when refCode is missing', async () => {
+      mockGet.mockResolvedValueOnce({});
+
+      const result = await provider.getRefCode('usr-001', 'acc-001');
+
+      expect(result).toBeNull();
+    });
   });
 
   // ── Payouts ──────────────────────────────────────────────────────────────
