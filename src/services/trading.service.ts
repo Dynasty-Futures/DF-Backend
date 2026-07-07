@@ -420,16 +420,20 @@ export const getCheckoutUrl = async (
     );
   }
 
-  // Build the final URL from YPF's base + the minted ref code. Critically, we
-  // DROP `add-to-cart`: the encrypted `ypf-ref` already binds the product +
-  // account + action, and leaving `add-to-cart` in kicks off a second,
-  // conflicting WooCommerce add-to-cart flow that sends the browser into an
-  // infinite checkout↔cart redirect loop ("too many redirects"). Verified live:
-  // `/checkout/?ypf-ref=…` lands a populated cart (200); `…?add-to-cart=N&ypf-ref=…`
-  // loops. Any other params (e.g. `program-activation=1`) are preserved as the
-  // reset/activation discriminator.
+  // Build the final URL from YPF's per-program checkout base + the minted ref
+  // code. Three params work together (verified live against the WooCommerce
+  // store's Store API cart):
+  //   • `add-to-cart=<id>` — selects the reset/activation PRODUCT. Dropping it
+  //     defaults the store to a generic "25k Standard Evaluation" (wrong product).
+  //   • a MODE flag — tells WooCommerce this is a reset/activation, not a fresh
+  //     purchase. Without it the store loops checkout↔cart ("too many redirects").
+  //     YPF's `activationUrl` already carries `program-activation=1`, but its
+  //     `accountResetUrl` OMITS `program-reset=true`, so we add it for resets.
+  //   • `ypf-ref` — binds the purchase to this specific account.
+  // add-to-cart=72 + program-reset=true + ypf-ref => correct reset product, no
+  // loop; missing program-reset => loop; missing add-to-cart => wrong product.
   const url = new URL(baseUrl);
-  url.searchParams.delete('add-to-cart');
+  if (purpose === 'reset') url.searchParams.set('program-reset', 'true');
   url.searchParams.set('ypf-ref', refCode);
   return { url: url.toString() };
 };
